@@ -36,6 +36,8 @@ def test_all_commands_present_in_help() -> None:
         "doctor",
         "export",
         "analyze",
+        "cost",
+        "roi",
     ):
         assert command in result.output, f"missing command in --help output: {command}"
 

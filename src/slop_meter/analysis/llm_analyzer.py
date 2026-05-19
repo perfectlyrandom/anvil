@@ -58,7 +58,7 @@ def select_samples(sessions: list[SessionRecord], *, n: int = 30) -> list[Prompt
     ]
 
 
-def _build_user_message(samples: list[PromptSample]) -> str:
+def _build_user_message(samples: list[PromptSample], *, force_search: bool) -> str:
     lines = [
         "I'm building a tool that analyzes developers' AI coding tool usage and gives them concrete",
         "advice on improving their prompts. Below are real first-user-query prompts from this developer's",
@@ -69,16 +69,32 @@ def _build_user_message(samples: list[PromptSample]) -> str:
         "Please:",
         "1. Identify 3-5 patterns you see across these prompts (e.g. typo density, vagueness, missing",
         "   context, request size, prompt style).",
-        "2. For each pattern, give one concrete tip the developer could apply. Where useful, look up",
-        "   current (2025/2026) prompt-engineering best practices via web search and cite them.",
+        "2. For each pattern, give one concrete tip the developer could apply.",
         "3. Be honest. If a pattern is fine and doesn't need fixing, say so. Don't manufacture problems.",
         "4. Highlight any 'green flags' you see - things they're already doing well.",
-        "",
-        "Output a single concise markdown report (target ~600-1000 words). No preamble.",
-        "",
-        "SAMPLES:",
-        "",
     ]
+    if force_search:
+        lines.extend(
+            [
+                "5. **REQUIRED**: Use the web_search tool at least 2-3 times to find current (2025-2026)",
+                "   research, papers, or blog posts on the patterns you identify. Topics likely worth",
+                "   searching: 'agentic prompt engineering best practices 2026', 'context engineering",
+                "   for code agents', 'Cursor prompt optimization', 'AI coding tool ROI studies METR'.",
+                "   Cite every URL you use inline using markdown links. Findings that surprise the",
+                "   developer (i.e. things they wouldn't already know) are especially valuable.",
+            ]
+        )
+    else:
+        lines.append("5. Optionally use web_search if a pattern requires up-to-date evidence; cite any URLs.")
+    lines.extend(
+        [
+            "",
+            "Output a single concise markdown report (target ~600-1000 words). No preamble.",
+            "",
+            "SAMPLES:",
+            "",
+        ]
+    )
     for i, sample in enumerate(samples, start=1):
         lines.append(
             f"### Sample {i} — workspace `{sample.workspace}` — ~{sample.user_tokens_est:,} user tokens in session"
@@ -101,15 +117,21 @@ def run_analysis(
     api_key: str,
     model: str = "claude-sonnet-4-5-20250929",
     enable_web_search: bool = True,
+    force_web_search: bool = False,
     max_tokens: int = 4096,
 ) -> AnalyzerReport:
-    """Call Anthropic with the samples and return an AnalyzerReport."""
+    """Call Anthropic with the samples and return an AnalyzerReport.
+
+    ``force_web_search`` adds explicit ``REQUIRED`` instructions for the model to
+    invoke web_search 2-3 times so we can surface up-to-date research the developer
+    wouldn't already know about.
+    """
     # Lazy import so the rest of the package doesn't require anthropic at import-time.
     import anthropic
 
     client = anthropic.Anthropic(api_key=api_key)
 
-    user_message = _build_user_message(samples)
+    user_message = _build_user_message(samples, force_search=enable_web_search and force_web_search)
 
     system_prompt = (
         "You are a senior dev tools researcher analyzing a developer's actual AI coding tool prompts. "
@@ -120,12 +142,14 @@ def run_analysis(
     )
 
     if enable_web_search:
+        # Bump max_uses when forcing so the model isn't constrained mid-search.
+        max_uses = 8 if force_web_search else 5
         response = client.messages.create(
             model=model,
             max_tokens=max_tokens,
             system=system_prompt,
             messages=[{"role": "user", "content": user_message}],
-            tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 5}],
+            tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": max_uses}],
         )
     else:
         response = client.messages.create(
