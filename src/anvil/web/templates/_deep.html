@@ -1,0 +1,99 @@
+{% if report is none %}
+  <div class="bg-elev border border-line p-12 text-center rounded-sm">
+    <p class="font-mono text-sm text-warn mb-2">no cursor data to analyze</p>
+    <p class="text-dim text-sm">Cursor needs to have at least one transcript on disk first.</p>
+  </div>
+{% else %}
+
+  {# --- repeated prompts (the most actionable section) --- #}
+  <section class="mb-12">
+    <div class="flex items-baseline justify-between mb-4">
+      <h3 class="font-display text-2xl italic tracking-tight">Repeated opening prompts</h3>
+      <p class="text-[11px] font-mono uppercase tracking-wider text-faint">≥3 sessions · sorted by burn</p>
+    </div>
+
+    {% if report.repeated_prompt_clusters %}
+      {% set max_burn = (report.repeated_prompt_clusters[:15] | map(attribute='total_user_tokens_burned') | max) or 1 %}
+      <div class="bg-elev border border-line rounded-sm overflow-hidden">
+        <div class="grid grid-cols-[auto_auto_1fr] gap-x-6 px-4 py-2.5 border-b border-line text-[11px] font-mono uppercase tracking-wider text-faint">
+          <div class="text-right">sessions</div>
+          <div class="text-right">tokens burned</div>
+          <div>canonical prompt</div>
+        </div>
+        {% for c in report.repeated_prompt_clusters[:15] %}
+        <div class="bar row-hover grid grid-cols-[auto_auto_1fr] gap-x-6 items-center px-4 py-3 border-b border-line/60 last:border-b-0 text-sm font-mono"
+             style="--bar: {{ (c.total_user_tokens_burned / max_burn * 100) | round(1) }}%; --bar-color: rgba(196,94,88,0.15);">
+          <div class="text-right text-coral font-sans font-semibold text-base nums">{{ c.session_ids | length }}</div>
+          <div class="text-right text-ink">{{ c.total_user_tokens_burned | intfmt }}</div>
+          <div class="text-dim truncate">{{ c.canonical_first_query | trunc(120) }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="text-dim text-sm font-mono">no repeated opening prompts. clean.</p>
+    {% endif %}
+  </section>
+
+  {# --- bucket bloat --- #}
+  <section class="mb-12">
+    <div class="flex items-baseline justify-between mb-4">
+      <h3 class="font-display text-2xl italic tracking-tight">Cross-session bucket bloat</h3>
+      <p class="text-[11px] font-mono uppercase tracking-wider text-faint">which bucket grows fastest?</p>
+    </div>
+    {% set max_p95 = (report.bloat_buckets | map(attribute='p95_tokens_per_session') | max) or 1 %}
+    <div class="bg-elev border border-line rounded-sm overflow-hidden">
+      <div class="grid grid-cols-[1fr_auto_auto_auto_auto] gap-x-6 px-4 py-2.5 border-b border-line text-[11px] font-mono uppercase tracking-wider text-faint">
+        <div>bucket</div>
+        <div class="text-right">median</div>
+        <div class="text-right">p95</div>
+        <div class="text-right">sessions</div>
+        <div class="text-right">total</div>
+      </div>
+      {% for b in report.bloat_buckets %}
+      <div class="bar row-hover grid grid-cols-[1fr_auto_auto_auto_auto] gap-x-6 items-center px-4 py-2.5 border-b border-line/60 last:border-b-0 text-sm font-mono"
+           style="--bar: {{ (b.p95_tokens_per_session / max_p95 * 100) | round(1) }}%; --bar-color: rgba(196,94,88,0.10);">
+        <div class="text-ink">{{ b.name }}</div>
+        <div class="text-right text-dim">{{ b.median_tokens_per_session | intfmt }}</div>
+        <div class="text-right text-coral">{{ b.p95_tokens_per_session | intfmt }}</div>
+        <div class="text-right text-faint">{{ b.appears_in_sessions | intfmt }}</div>
+        <div class="text-right text-ink">{{ b.total_tokens | intfmt }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  {# --- heavy pastes --- #}
+  <section>
+    <div class="flex items-baseline justify-between mb-4">
+      <h3 class="font-display text-2xl italic tracking-tight">Heavy mid-session pastes</h3>
+      <p class="text-[11px] font-mono uppercase tracking-wider text-faint">deduplicated · sorted by size</p>
+    </div>
+    {% if report.mid_session_samples %}
+      {% set max_paste = (report.mid_session_samples | map(attribute='estimated_tokens') | max) or 1 %}
+      <div class="bg-elev border border-line rounded-sm overflow-hidden">
+        <div class="grid grid-cols-[1.2fr_auto_auto_auto_2fr] gap-x-6 px-4 py-2.5 border-b border-line text-[11px] font-mono uppercase tracking-wider text-faint">
+          <div>workspace</div>
+          <div class="text-right">turn</div>
+          <div class="text-right">tokens</div>
+          <div class="text-right">reuse</div>
+          <div>preview</div>
+        </div>
+        {% for s in report.mid_session_samples %}
+        <div class="bar row-hover grid grid-cols-[1.2fr_auto_auto_auto_2fr] gap-x-6 items-center px-4 py-2.5 border-b border-line/60 last:border-b-0 text-sm font-mono"
+             style="--bar: {{ (s.estimated_tokens / max_paste * 100) | round(1) }}%; --bar-color: rgba(196,94,88,0.10);">
+          <div class="text-coral truncate">{{ s.workspace | trunc(26) }}</div>
+          <div class="text-right text-faint">{{ s.turn_index }}</div>
+          <div class="text-right text-ink">{{ s.estimated_tokens | intfmt }}</div>
+          <div class="text-right {% if s.duplicate_count > 1 %}text-coral font-semibold{% else %}text-faint{% endif %}">
+            {% if s.duplicate_count > 1 %}{{ s.duplicate_count }}×{% else %}—{% endif %}
+          </div>
+          <div class="text-dim truncate">{{ s.text_preview | trunc(80) }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="text-dim text-sm font-mono">no heavy mid-session pastes.</p>
+    {% endif %}
+  </section>
+
+{% endif %}

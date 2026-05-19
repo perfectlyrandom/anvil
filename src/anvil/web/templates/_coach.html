@@ -1,0 +1,77 @@
+{# The harsh expert. No softening, no "good job", just leaks and what to do. #}
+
+{% set sev_colors = {
+  'critical': 'text-coral',
+  'high':     'text-coral',
+  'medium':   'text-warn',
+  'low':      'text-dim',
+} %}
+{% set sev_bgs = {
+  'critical': 'border-l-coral bg-coral/5',
+  'high':     'border-l-coral',
+  'medium':   'border-l-warn',
+  'low':      'border-l-line',
+} %}
+{% set grade_color = {
+  'A': 'text-good',
+  'B': 'text-good',
+  'C': 'text-warn',
+  'D': 'text-coral',
+  'F': 'text-coral',
+} %}
+
+<div class="bg-elev border border-line mb-8 p-7 rounded-sm">
+  <div class="flex items-baseline justify-between gap-6 flex-wrap mb-3">
+    <div>
+      <div class="text-[11px] font-mono uppercase tracking-wider text-faint mb-2">verdict</div>
+      <p class="font-display text-2xl md:text-3xl italic text-ink leading-tight max-w-2xl">{{ report.one_line_summary }}</p>
+    </div>
+    <div class="text-right">
+      <div class="text-[11px] font-mono uppercase tracking-wider text-faint mb-1">grade</div>
+      <div class="font-display text-7xl italic {{ grade_color.get(report.grade, 'text-ink') }} leading-none nums">{{ report.grade }}</div>
+    </div>
+  </div>
+  {% if report.total_estimated_savings_usd > 0 %}
+  <p class="text-dim text-sm mt-4">
+    <span class="font-mono text-good">{{ report.total_estimated_savings_usd | usd }}</span> in addressable savings across the issues below.
+  </p>
+  {% endif %}
+</div>
+
+{% if not report.issues %}
+  <div class="bg-elev border border-line p-12 text-center rounded-sm">
+    <p class="text-dim font-mono text-sm">no issues found.</p>
+    <p class="text-faint text-xs mt-2">come back after you've burned more tokens.</p>
+  </div>
+{% else %}
+  <div class="space-y-3">
+    {% for issue in report.issues %}
+    <article class="bg-elev border border-line border-l-2 {{ sev_bgs.get(issue.severity, '') }} p-5 rounded-sm">
+      <div class="flex items-baseline justify-between gap-4 mb-2 flex-wrap">
+        <h3 class="font-display text-lg italic tracking-tight text-ink flex-1 min-w-0">{{ issue.title }}</h3>
+        <span class="text-[10px] font-mono uppercase tracking-wider {{ sev_colors.get(issue.severity, 'text-dim') }}">{{ issue.severity }}</span>
+      </div>
+      <p class="text-sm text-dim leading-relaxed mb-3">{{ issue.body }}</p>
+      <p class="text-sm text-ink leading-relaxed mb-3">
+        <span class="font-mono text-[10px] uppercase tracking-wider text-faint mr-2">do this</span>
+        {{ issue.action }}
+      </p>
+      {% if issue.evidence %}
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-2 text-xs font-mono mt-3 pt-3 border-t border-line/40">
+        {% for k, v in issue.evidence.items() %}
+        <div class="min-w-0">
+          <div class="text-faint truncate" title="{{ k }}">{{ k }}</div>
+          <div class="text-ink break-words" style="overflow-wrap: anywhere;">{{ v }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% if issue.estimated_savings_usd %}
+      <p class="text-xs font-mono text-good mt-3">
+        addressable: {{ issue.estimated_savings_usd | usd }}
+      </p>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+{% endif %}

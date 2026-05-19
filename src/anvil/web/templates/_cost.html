@@ -1,0 +1,126 @@
+{# Cost segmentation across Cursor, Claude Code, and Codex CLI. #}
+
+{% set source_labels = {
+  'cursor': 'Cursor',
+  'claude_code': 'Claude Code',
+  'codex': 'Codex CLI',
+} %}
+
+{% if not breakdown.rows %}
+  <div class="bg-elev border border-line p-12 text-center rounded-sm">
+    <p class="font-mono text-sm text-warn mb-3">no usage data on this machine</p>
+    <p class="text-dim text-sm max-w-md mx-auto">
+      No Cursor transcripts, Claude Code sessions, or Codex rollouts under your home dir.
+    </p>
+  </div>
+{% else %}
+
+  {# Hero: grand total + source split inline #}
+  <div class="bg-elev border border-line mb-8 p-7 rounded-sm">
+    <div class="flex items-baseline justify-between flex-wrap gap-6 mb-4">
+      <div>
+        <div class="text-[11px] font-mono uppercase tracking-wider text-faint mb-2">total estimated spend</div>
+        <div class="font-display text-6xl md:text-7xl italic text-coral leading-none nums">{{ breakdown.grand_total_usd | usd }}</div>
+      </div>
+      <div class="flex gap-8 text-sm">
+        {% for source, label in source_labels.items() %}
+        {% set v = breakdown.totals_by_source.get(source, 0) %}
+        <div>
+          <div class="text-[10px] font-mono uppercase tracking-wider text-faint">{{ label }}</div>
+          <div class="text-xl font-sans font-semibold mt-1 {% if v > 0 %}text-ink{% else %}text-faint{% endif %} nums">{{ v | usd }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% if breakdown.cursor_sessions_unpriced %}
+    <p class="text-dim text-xs mt-3 max-w-3xl leading-relaxed">
+      <span class="text-good font-mono">{{ breakdown.cursor_sessions_priced }}</span> Cursor sessions priced against the real model from <span class="font-mono">ai-code-tracking.db</span>;
+      <span class="text-warn font-mono">{{ breakdown.cursor_sessions_unpriced }}</span> sessions estimated at the fallback model. Cursor doesn't log tokens or cost — Claude Code &amp; Codex do.
+    </p>
+    {% endif %}
+  </div>
+
+  {# Cache util + switch recs side by side — denser, fewer sections #}
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+    {% if breakdown.cache.cacheable_input_tokens > 0 %}
+    <section class="bg-elev border border-line p-5 rounded-sm">
+      <div class="flex items-baseline justify-between mb-4">
+        <h3 class="font-display text-xl italic tracking-tight">Cache utilization</h3>
+        <span class="text-[10px] font-mono uppercase tracking-wider text-faint">priced sources only</span>
+      </div>
+      <div class="grid grid-cols-2 gap-x-6 gap-y-4">
+        <div>
+          <div class="text-[10px] font-mono uppercase text-faint">hit rate</div>
+          <div class="text-2xl font-sans font-semibold mt-1 nums {% if breakdown.cache.hit_rate > 0.5 %}text-good{% elif breakdown.cache.hit_rate > 0.2 %}text-warn{% else %}text-coral{% endif %}">{{ breakdown.cache.hit_rate | pct }}</div>
+        </div>
+        <div>
+          <div class="text-[10px] font-mono uppercase text-faint">saved</div>
+          <div class="text-2xl font-sans font-semibold mt-1 text-good nums">{{ breakdown.cache.estimated_cache_savings_usd | usd }}</div>
+        </div>
+        <div>
+          <div class="text-[10px] font-mono uppercase text-faint">cached / eligible</div>
+          <div class="text-sm font-mono text-dim nums mt-1">{{ breakdown.cache.cached_input_tokens | intfmt }} / {{ breakdown.cache.cacheable_input_tokens | intfmt }}</div>
+        </div>
+        <div>
+          <div class="text-[10px] font-mono uppercase text-faint">left on table @ 80%</div>
+          <div class="text-sm font-mono text-coral nums mt-1">{{ breakdown.cache.estimated_cache_left_on_table_usd | usd }}</div>
+        </div>
+      </div>
+    </section>
+    {% endif %}
+
+    {% if breakdown.switch_recommendations %}
+    <section class="bg-elev border border-line p-5 rounded-sm">
+      <div class="flex items-baseline justify-between mb-4">
+        <h3 class="font-display text-xl italic tracking-tight">Cheaper-model wins</h3>
+        <span class="text-[10px] font-mono uppercase tracking-wider text-faint">top {{ [breakdown.switch_recommendations|length, 5]|min }}</span>
+      </div>
+      {% for r in breakdown.switch_recommendations[:5] %}
+      <div class="grid grid-cols-[1fr_auto] gap-2 items-baseline py-1.5 border-b border-line/40 last:border-b-0 text-sm">
+        <div class="font-mono truncate text-ink">
+          {{ r.model_label }}
+          <span class="text-faint mx-1">→</span>
+          <span class="text-good">{{ r.cheaper_alternative_model }}</span>
+          <span class="text-faint text-xs ml-1">· {{ r.project }}</span>
+        </div>
+        <div class="text-right font-mono">
+          <span class="text-good">{{ r.potential_model_savings_usd | usd }}</span>
+          <span class="text-faint text-xs ml-1">({{ (r.potential_model_savings_usd / r.estimated_usd) | pct if r.estimated_usd else '—' }})</span>
+        </div>
+      </div>
+      {% endfor %}
+    </section>
+    {% endif %}
+  </div>
+
+  {# Segmented table — every (source x model x project) row #}
+  <section>
+    <div class="flex items-baseline justify-between mb-3">
+      <h3 class="font-display text-xl italic tracking-tight">Every row</h3>
+      <span class="text-[10px] font-mono uppercase tracking-wider text-faint">{{ breakdown.rows | length }} segments · est = estimated model</span>
+    </div>
+    {% set max_row = (breakdown.rows | map(attribute='estimated_usd') | max) or 1 %}
+    <div class="bg-elev border border-line rounded-sm overflow-hidden">
+      <div class="grid grid-cols-[auto_1fr_1fr_auto_auto_auto_auto] gap-x-3 px-3 py-2 border-b border-line text-[10px] font-mono uppercase tracking-wider text-faint">
+        <div>src</div><div>model</div><div>project</div>
+        <div class="text-right">sess</div>
+        <div class="text-right">in</div>
+        <div class="text-right">hit</div>
+        <div class="text-right">usd</div>
+      </div>
+      {% for r in breakdown.rows %}
+      <div class="bar row-hover grid grid-cols-[auto_1fr_1fr_auto_auto_auto_auto] gap-x-3 items-baseline px-3 py-2 border-b border-line/50 last:border-b-0 text-sm font-mono"
+           style="--bar: {{ ((r.estimated_usd or 0) / max_row * 100) | round(1) }}%; --bar-color: {% if r.is_estimated %}rgba(196,94,88,0.05){% else %}rgba(196,94,88,0.10){% endif %};">
+        <div class="text-[10px] uppercase tracking-wider text-dim">{{ source_labels.get(r.source, r.source) }}</div>
+        <div class="truncate {% if r.is_estimated %}text-warn{% else %}text-ink{% endif %}" title="{{ r.model }}">{{ r.model_label }}</div>
+        <div class="text-dim truncate" title="{{ r.project }}">{{ r.project }}</div>
+        <div class="text-right text-faint">{{ r.sessions }}</div>
+        <div class="text-right text-dim">{{ r.input_tokens | intfmt }}</div>
+        <div class="text-right {% if r.cache_hit_rate > 0.5 %}text-good{% elif r.cache_hit_rate > 0 %}text-warn{% else %}text-faint{% endif %}">{{ r.cache_hit_rate | pct if r.cache_hit_rate else '—' }}</div>
+        <div class="text-right {% if r.estimated_usd > 0 %}text-coral{% else %}text-faint italic{% endif %}">{{ r.estimated_usd | usd if r.estimated_usd else '—' }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+{% endif %}

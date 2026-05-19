@@ -1,0 +1,73 @@
+{% if error %}
+  <div class="bg-elev border border-line p-12 text-center rounded-sm">
+    <p class="font-mono text-sm text-warn">{{ error }}</p>
+  </div>
+{% elif report is none or not report.weeks %}
+  <div class="bg-elev border border-line p-12 text-center rounded-sm">
+    <p class="font-mono text-sm text-dim">no correlation data yet</p>
+    <p class="text-faint text-xs font-mono mt-2">need both Claude Code usage AND GitHub PRs in the window</p>
+  </div>
+{% else %}
+
+  {# --- KPI strip --- #}
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-px bg-line border border-line mb-8 rounded-sm overflow-hidden">
+    <div class="bg-elev p-6">
+      <div class="text-[11px] font-mono uppercase tracking-wider text-faint">est. ai spend</div>
+      <div class="text-3xl xl:text-4xl font-sans font-semibold tracking-tightest mt-3 text-coral nums">{{ report.total_estimated_cost_usd | usd }}</div>
+    </div>
+    <div class="bg-elev p-6">
+      <div class="text-[11px] font-mono uppercase tracking-wider text-faint">merged prs</div>
+      <div class="text-3xl xl:text-4xl font-sans font-semibold tracking-tightest mt-3 text-good nums">{{ report.total_merged_prs | intfmt }}</div>
+    </div>
+    <div class="bg-elev p-6">
+      <div class="text-[11px] font-mono uppercase tracking-wider text-faint">active weeks</div>
+      <div class="text-3xl xl:text-4xl font-sans font-semibold tracking-tightest mt-3 text-ink nums">{{ report.weeks | length | intfmt }}</div>
+    </div>
+    <div class="bg-elev p-6">
+      <div class="text-[11px] font-mono uppercase tracking-wider text-faint">window</div>
+      <div class="text-xl font-mono mt-4">{{ report.earliest_week }} <span class="text-faint">→</span> {{ report.latest_week }}</div>
+    </div>
+  </div>
+
+  <blockquote class="font-display text-lg italic text-dim leading-relaxed border-l-2 border-coral pl-5 mb-10 max-w-2xl">
+    <span class="text-ink">This is calibration, not a productivity score.</span>
+    METR (2025) found AI tools can make experienced devs <em>feel faster</em> while measurably slowing them down. Use these numbers as a mirror, not a ranking.
+  </blockquote>
+
+  {# --- weekly table with sparkbar on cost --- #}
+  <section>
+    <div class="flex items-baseline justify-between mb-4">
+      <h3 class="font-display text-2xl italic tracking-tight">Week by week</h3>
+      <p class="text-[11px] font-mono uppercase tracking-wider text-faint">spend vs shipping</p>
+    </div>
+    {% set max_week_cost = (report.weeks | map(attribute='claude_code_estimated_cost_usd') | max) or 1 %}
+    <div class="bg-elev border border-line rounded-sm overflow-x-auto">
+      <div class="grid grid-cols-[auto_auto_auto_auto_auto_auto_auto_auto_auto] gap-x-5 px-4 py-2.5 border-b border-line text-[11px] font-mono uppercase tracking-wider text-faint min-w-[900px]">
+        <div>week</div>
+        <div class="text-right">sessions</div>
+        <div class="text-right">in</div>
+        <div class="text-right">out</div>
+        <div class="text-right">usd</div>
+        <div class="text-right">prs opened</div>
+        <div class="text-right">prs merged</div>
+        <div class="text-right">loc</div>
+        <div class="text-right">$/pr</div>
+      </div>
+      {% for w in report.weeks %}
+      <div class="bar row-hover grid grid-cols-[auto_auto_auto_auto_auto_auto_auto_auto_auto] gap-x-5 items-center px-4 py-2.5 border-b border-line/60 last:border-b-0 text-sm font-mono min-w-[900px]"
+           style="--bar: {{ ((w.claude_code_estimated_cost_usd or 0) / max_week_cost * 100) | round(1) }}%; --bar-color: rgba(196,94,88,0.12);">
+        <div class="text-ink">{{ w.iso_week }}</div>
+        <div class="text-right text-dim">{{ w.claude_code_sessions }}</div>
+        <div class="text-right text-faint">{{ w.claude_code_input_tokens | intfmt }}</div>
+        <div class="text-right text-faint">{{ w.claude_code_output_tokens | intfmt }}</div>
+        <div class="text-right text-coral">{{ w.claude_code_estimated_cost_usd | usd }}</div>
+        <div class="text-right text-dim">{{ w.prs_opened }}</div>
+        <div class="text-right text-good">{{ w.prs_merged }}</div>
+        <div class="text-right text-dim">{{ w.lines_changed_merged | intfmt }}</div>
+        <div class="text-right text-ink">{{ w.cost_per_merged_pr | usd }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+{% endif %}

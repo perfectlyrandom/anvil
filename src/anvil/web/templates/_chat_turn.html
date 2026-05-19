@@ -1,0 +1,23 @@
+<div class="space-y-3">
+  <div>
+    <div class="text-[10px] font-mono uppercase tracking-wider text-faint mb-1">you</div>
+    <div class="text-ink text-sm font-sans">{{ user_text }}</div>
+  </div>
+  <div class="border-l-2 border-coral pl-3">
+    <div class="text-[10px] font-mono uppercase tracking-wider text-coral mb-1">anvil</div>
+    <div class="text-ink text-sm leading-relaxed font-sans"><pre class="font-sans">{{ reply_text }}</pre></div>
+    {% if tool_calls %}
+    <div class="mt-3 pt-2 border-t border-line">
+      <div class="text-[10px] font-mono uppercase tracking-wider text-faint mb-1.5">{{ tool_calls | length }} tool call{{ 's' if tool_calls|length != 1 else '' }}</div>
+      <ul class="space-y-0.5 text-xs font-mono">
+        {% for call in tool_calls %}<li class="text-dim">› {{ call }}</li>{% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+    {% if usage %}
+    <div class="mt-2 text-[10px] font-mono text-faint">
+      {{ usage.iterations }} iter · {{ usage.input_tokens | intfmt }} in / {{ usage.output_tokens | intfmt }} out
+    </div>
+    {% endif %}
+  </div>
+</div>

@@ -147,7 +147,7 @@ def _extract_first_user_query(text: str) -> str | None:
 
 
 def _workspace_from_path(path: Path) -> str:
-    """Decode a Cursor-encoded workspace path like ``Users-pratyushaduvvuri-Desktop-Galileo-api``."""
+    """Decode a Cursor-encoded workspace path like ``Users-me-Desktop-myproject-api``."""
     # Cursor encodes / as -. We can't perfectly reverse this (paths can contain - too)
     # but for display purposes the encoded form is fine.
     parts = path.parts

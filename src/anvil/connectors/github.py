@@ -37,6 +37,8 @@ class PullRequestRecord:
     changed_files: int
     is_draft: bool
     url: str
+    body: str = ""  # PR description; used by the significance classifier for keyword signals
+    review_count: int = 0  # how many distinct reviewers approved/commented
 
     @property
     def shipped(self) -> bool:
@@ -87,6 +89,7 @@ query($search: String!, $cursor: String) {
       ... on PullRequest {
         number
         title
+        body
         state
         isDraft
         url
@@ -97,6 +100,7 @@ query($search: String!, $cursor: String) {
         deletions
         changedFiles
         repository { nameWithOwner }
+        reviews(first: 1) { totalCount }
       }
     }
   }
@@ -118,6 +122,8 @@ def _parse_pr(node: dict) -> PullRequestRecord:  # type: ignore[type-arg]
         changed_files=int(node.get("changedFiles") or 0),
         is_draft=bool(node.get("isDraft", False)),
         url=str(node["url"]),
+        body=str(node.get("body") or ""),
+        review_count=int((node.get("reviews") or {}).get("totalCount") or 0),
     )
 
 
@@ -190,5 +196,5 @@ def fetch_authored_prs(
 
 
 def default_since(days: int = 90) -> datetime:
-    """Sensible default lookback for slop_meter analyses."""
+    """Sensible default lookback for anvil analyses."""
     return datetime.now(tz=UTC) - timedelta(days=days)

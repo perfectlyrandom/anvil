@@ -1,0 +1,96 @@
+{% if agg is none %}
+  <div class="bg-elev border border-line p-12 text-center rounded-sm">
+    <p class="font-mono text-sm text-warn mb-2">no cursor transcripts found</p>
+    <p class="text-dim text-sm">
+      Pointing at <span class="font-mono text-faint">~/.cursor/projects</span>.
+      Open a project in Cursor and chat with the agent at least once, then refresh.
+    </p>
+  </div>
+{% else %}
+  {# --- KPI strip — white tiles separated by hairlines on the cream page --- #}
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-px bg-line border border-line mb-12 rounded-sm overflow-hidden">
+    <div class="bg-elev p-6">
+      <div class="text-[11px] font-mono uppercase tracking-wider text-faint">sessions</div>
+      <div class="text-3xl xl:text-4xl font-sans font-semibold tracking-tightest mt-3 text-ink nums">{{ agg.total_sessions | intfmt }}</div>
+      <div class="text-xs font-mono text-dim mt-2">
+        {{ agg.parent_sessions | intfmt }} parent · {{ agg.subagent_sessions | intfmt }} subagent
+      </div>
+    </div>
+    <div class="bg-elev p-6">
+      <div class="text-[11px] font-mono uppercase tracking-wider text-faint">turns</div>
+      <div class="text-3xl xl:text-4xl font-sans font-semibold tracking-tightest mt-3 text-ink nums">{{ agg.total_turns | intfmt }}</div>
+      <div class="text-xs font-mono text-dim mt-2">
+        avg {{ agg.avg_turns_per_session | round(1) }} · median {{ agg.median_turns_per_session }}
+      </div>
+    </div>
+    <div class="bg-elev p-6">
+      <div class="text-[11px] font-mono uppercase tracking-wider text-faint">user tokens</div>
+      <div class="text-3xl xl:text-4xl font-sans font-semibold tracking-tightest mt-3 text-ink nums">{{ agg.total_user_tokens | intfmt }}</div>
+      <div class="text-xs font-mono text-dim mt-2">tiktoken estimate · what you sent up</div>
+    </div>
+    <div class="bg-elev p-6">
+      <div class="text-[11px] font-mono uppercase tracking-wider text-faint">assistant tokens</div>
+      <div class="text-3xl xl:text-4xl font-sans font-semibold tracking-tightest mt-3 text-ink nums">{{ agg.total_assistant_tokens | intfmt }}</div>
+      <div class="text-xs font-mono text-dim mt-2">what came back</div>
+    </div>
+  </div>
+
+  {# --- bucket attribution with inline bars --- #}
+  <section class="mb-12">
+    <div class="flex items-baseline justify-between mb-4">
+      <h3 class="font-display text-2xl italic tracking-tight">Where did your tokens go?</h3>
+      <p class="text-[11px] font-mono uppercase tracking-wider text-faint">user-side attribution</p>
+    </div>
+    {% set max_share = (agg.buckets | map(attribute='share_of_user_tokens') | max) or 1 %}
+    <div class="bg-elev border border-line rounded-sm overflow-hidden">
+      <div class="grid grid-cols-[1fr_auto_auto_auto] gap-x-8 px-4 py-2.5 border-b border-line text-[11px] font-mono uppercase tracking-wider text-faint">
+        <div>bucket</div>
+        <div class="text-right">tokens</div>
+        <div class="text-right">share</div>
+        <div class="text-right">sessions</div>
+      </div>
+      {% for b in agg.buckets %}
+      <div class="bar row-hover grid grid-cols-[1fr_auto_auto_auto] gap-x-8 items-center px-4 py-2.5 border-b border-line/60 last:border-b-0 text-sm font-mono"
+           style="--bar: {{ (b.share_of_user_tokens / max_share * 100) | round(1) }}%; --bar-color: rgba(196,94,88,0.13);">
+        <div class="text-ink">{{ b.name }}</div>
+        <div class="text-right text-dim">{{ b.total_tokens | intfmt }}</div>
+        <div class="text-right text-ink">{{ b.share_of_user_tokens | pct }}</div>
+        <div class="text-right text-faint">{{ b.appears_in_sessions | intfmt }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  {# --- top sessions — clickable rows open a drill-down panel below --- #}
+  <section>
+    <div class="flex items-baseline justify-between mb-4">
+      <h3 class="font-display text-2xl italic tracking-tight">Heaviest sessions</h3>
+      <p class="text-[11px] font-mono uppercase tracking-wider text-faint">top 10 · click a row to drill in</p>
+    </div>
+    {% set max_tokens = (agg.longest_sessions | map(attribute='user_tokens_est') | max) or 1 %}
+    <div class="bg-elev border border-line rounded-sm overflow-hidden">
+      <div class="grid grid-cols-[1fr_auto_auto_auto_2fr] gap-x-6 px-4 py-2.5 border-b border-line text-[11px] font-mono uppercase tracking-wider text-faint">
+        <div>workspace</div>
+        <div class="text-right">turns</div>
+        <div class="text-right">user</div>
+        <div class="text-right">asst</div>
+        <div>first query</div>
+      </div>
+      {% for s in agg.longest_sessions %}
+      <div class="bar row-hover grid grid-cols-[1fr_auto_auto_auto_2fr] gap-x-6 items-center px-4 py-2.5 border-b border-line/60 last:border-b-0 text-sm font-mono cursor-pointer"
+           hx-get="/fragments/session/{{ s.session_id }}"
+           hx-target="#session-detail-panel"
+           hx-swap="innerHTML"
+           hx-on::after-request="document.getElementById('session-detail-panel').scrollIntoView({behavior: 'smooth', block: 'start'})"
+           style="--bar: {{ (s.user_tokens_est / max_tokens * 100) | round(1) }}%; --bar-color: rgba(196,94,88,0.10);">
+        <div class="text-coral truncate">{{ s.workspace | trunc(36) }}</div>
+        <div class="text-right text-dim">{{ s.turn_count | intfmt }}</div>
+        <div class="text-right text-ink">{{ s.user_tokens_est | intfmt }}</div>
+        <div class="text-right text-dim">{{ s.assistant_tokens_est | intfmt }}</div>
+        <div class="text-faint truncate">{{ s.first_user_query | trunc(60) }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    <div id="session-detail-panel"></div>
+  </section>
+{% endif %}

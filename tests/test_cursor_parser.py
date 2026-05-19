@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from slop_meter.analysis.cursor_stats import aggregate
-from slop_meter.parsers.cursor_transcripts import (
+from anvil.analysis.cursor_stats import aggregate
+from anvil.parsers.cursor_transcripts import (
     estimate_tokens,
     parse_session_file,
     scan_cursor_projects,

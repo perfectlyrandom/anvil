@@ -16,11 +16,11 @@ from __future__ import annotations
 
 import hashlib
 import re
-from collections import Counter, defaultdict
+from collections import defaultdict
 from dataclasses import dataclass
 from statistics import median
 
-from slop_meter.parsers.cursor_transcripts import CursorScanResult, SessionRecord, TurnRecord
+from anvil.parsers.cursor_transcripts import CursorScanResult, SessionRecord, TurnRecord
 
 
 @dataclass
@@ -57,10 +57,28 @@ class RepeatedPromptCluster:
 
 
 @dataclass
+class ForkedSessionCluster:
+    """Two or more sessions whose first K turns are byte-identical — almost certainly forks.
+
+    A repeated opening prompt is "I keep asking the same thing"; a forked session is
+    "I duplicated a session and re-paid for the leading turns the model already gave me."
+    The distinction matters because the action is different (link/continue the original
+    instead of saving a rule).
+    """
+
+    canonical_first_query: str
+    session_ids: list[str]
+    workspace: str
+    identical_leading_turns: int  # how deep the byte-identical prefix goes
+    duplicated_token_cost: int  # user+assistant tokens in the duplicated prefix, summed over forks
+
+
+@dataclass
 class CursorDeepReport:
     mid_session_samples: list[MidSessionSample]
     bloat_buckets: list[BloatBucket]
     repeated_prompt_clusters: list[RepeatedPromptCluster]
+    forked_session_clusters: list[ForkedSessionCluster]
 
 
 def _normalize_prompt(text: str) -> str:
@@ -179,6 +197,70 @@ def find_repeated_prompts(sessions: list[SessionRecord], *, min_cluster_size: in
     return clusters
 
 
+def _leading_turn_signature(session: SessionRecord, depth: int) -> str | None:
+    """Hash the first ``depth`` turns' raw text. Returns None if the session is shorter.
+
+    Sessions are forks iff this signature matches across multiple files in the same workspace.
+    We use normalized raw_text (whitespace collapsed) so cosmetic edits don't break the match.
+    """
+    if len(session.turns) < depth:
+        return None
+    pieces = []
+    for t in session.turns[:depth]:
+        pieces.append(t.role)
+        pieces.append(re.sub(r"\s+", " ", t.raw_text).strip())
+    joined = "||".join(pieces)
+    return hashlib.sha1(joined.encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
+
+
+def find_forked_sessions(
+    sessions: list[SessionRecord], *, min_depth: int = 3, max_depth: int = 8
+) -> list[ForkedSessionCluster]:
+    """Find sessions whose first K turns are byte-identical (within the same workspace).
+
+    We try the deepest match first (``max_depth`` turns identical → very high confidence)
+    and fall back shorter so we still catch short sessions that happen to share an opener.
+    """
+    clusters: list[ForkedSessionCluster] = []
+    seen_ids: set[str] = set()
+    # Group by workspace so forks across different repos don't get conflated.
+    by_workspace: dict[str, list[SessionRecord]] = defaultdict(list)
+    for s in sessions:
+        by_workspace[s.workspace].append(s)
+
+    for workspace, ws_sessions in by_workspace.items():
+        if len(ws_sessions) < 2:
+            continue
+        # Try deeper signatures first; a depth-8 match is much stronger than depth-3.
+        for depth in range(max_depth, min_depth - 1, -1):
+            by_sig: dict[str, list[SessionRecord]] = defaultdict(list)
+            for s in ws_sessions:
+                if s.session_id in seen_ids:
+                    continue
+                sig = _leading_turn_signature(s, depth)
+                if sig is not None:
+                    by_sig[sig].append(s)
+            for cluster in by_sig.values():
+                if len(cluster) < 2:
+                    continue
+                # The duplicated cost: every fork after the first re-pays the leading-turn tokens.
+                leading_tokens_one_copy = sum(t.estimated_tokens for t in cluster[0].turns[:depth])
+                wasted = leading_tokens_one_copy * (len(cluster) - 1)
+                canonical_query = cluster[0].first_user_query or ""
+                clusters.append(
+                    ForkedSessionCluster(
+                        canonical_first_query=canonical_query[:200],
+                        session_ids=[s.session_id for s in cluster],
+                        workspace=workspace,
+                        identical_leading_turns=depth,
+                        duplicated_token_cost=wasted,
+                    )
+                )
+                seen_ids.update(s.session_id for s in cluster)
+    clusters.sort(key=lambda c: c.duplicated_token_cost, reverse=True)
+    return clusters
+
+
 def deep_analyze(scan: CursorScanResult, *, mid_sample_top_n: int = 15) -> CursorDeepReport:
     """Run the full deep analysis pipeline."""
     parent_sessions = [s for s in scan.sessions if not s.is_subagent]
@@ -186,8 +268,5 @@ def deep_analyze(scan: CursorScanResult, *, mid_sample_top_n: int = 15) -> Curso
         mid_session_samples=sample_mid_session_turns(parent_sessions)[:mid_sample_top_n],
         bloat_buckets=detect_bloat_buckets(parent_sessions),
         repeated_prompt_clusters=find_repeated_prompts(parent_sessions),
+        forked_session_clusters=find_forked_sessions(parent_sessions),
     )
-
-
-# Silence unused-import warnings when importing aggregates in tests.
-_ = Counter

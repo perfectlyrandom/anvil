@@ -1,0 +1,123 @@
+{# Skills audit: what's installed, what gets exposed every session, what never gets read. #}
+
+{% if not report.skills %}
+  <div class="bg-elev border border-line p-12 text-center rounded-sm">
+    <p class="font-mono text-sm text-dim mb-2">no skills found</p>
+    <p class="text-faint text-sm">
+      Nothing in <span class="font-mono">~/.cursor/skills</span>. If your skills live somewhere else,
+      set <span class="font-mono">ANVIL_CURSOR_SKILLS_DIR</span> in your .env.
+    </p>
+  </div>
+{% else %}
+
+  {# --- hero: per-session overhead --- #}
+  <div class="bg-elev border border-line mb-12 p-8 rounded-sm">
+    <div class="text-[11px] font-mono uppercase tracking-wider text-faint mb-3">
+      every Cursor session pays for your skill list before you say a word
+    </div>
+    <div class="flex items-baseline gap-6 flex-wrap">
+      <div class="font-display text-7xl md:text-8xl italic text-coral leading-none nums">
+        ~{{ report.per_session_description_overhead_tokens | intfmt }}
+      </div>
+      <div class="text-dim font-sans">
+        tokens / session of description overhead
+        <span class="text-faint">·</span>
+        <span class="font-mono text-xs text-faint">
+          ≈ {{ report.total_lifetime_description_tokens | intfmt }} lifetime across {{ report.total_sessions_scanned | intfmt }} sessions
+        </span>
+      </div>
+    </div>
+    <p class="text-dim text-sm mt-5 max-w-2xl leading-relaxed">
+      Cursor injects an <span class="font-mono">&lt;available_skills&gt;</span> block listing every installed skill's
+      description into every prompt. Only the bodies of skills the agent actually reads (via
+      the Read tool) get added on top. Stale skills keep paying the description tax with no
+      visible payoff.
+    </p>
+  </div>
+
+  {# --- KPI strip --- #}
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-px bg-line border border-line rounded-sm overflow-hidden mb-10">
+    <div class="bg-elev p-6">
+      <div class="text-[11px] font-mono uppercase tracking-wider text-faint">installed</div>
+      <div class="text-3xl xl:text-4xl font-sans font-semibold tracking-tightest mt-3 text-ink nums">{{ report.total_skills | intfmt }}</div>
+      <div class="text-xs font-mono text-dim mt-2">SKILL.md files on disk</div>
+    </div>
+    <div class="bg-elev p-6">
+      <div class="text-[11px] font-mono uppercase tracking-wider text-faint">stale skills</div>
+      <div class="text-3xl xl:text-4xl font-sans font-semibold tracking-tightest mt-3 {% if report.stale_skills_count > 0 %}text-coral{% else %}text-ink{% endif %} nums">{{ report.stale_skills_count | intfmt }}</div>
+      <div class="text-xs font-mono text-dim mt-2">exposed ≥10× · no mention in Cursor/Codex/Claude Code</div>
+    </div>
+    <div class="bg-elev p-6">
+      <div class="text-[11px] font-mono uppercase tracking-wider text-faint">total body</div>
+      <div class="text-3xl xl:text-4xl font-sans font-semibold tracking-tightest mt-3 text-ink nums">{{ report.total_body_tokens | intfmt }}</div>
+      <div class="text-xs font-mono text-dim mt-2">tokens · if every skill loaded</div>
+    </div>
+    <div class="bg-elev p-6">
+      <div class="text-[11px] font-mono uppercase tracking-wider text-faint">sessions</div>
+      <div class="text-3xl xl:text-4xl font-sans font-semibold tracking-tightest mt-3 text-ink nums">{{ report.total_sessions_scanned | intfmt }}</div>
+      <div class="text-xs font-mono text-dim mt-2">scanned for skill signals</div>
+    </div>
+  </div>
+
+  {# --- per-skill table, sortable visually by stale-first then weight --- #}
+  <section class="mb-10">
+    <div class="flex items-baseline justify-between mb-4">
+      <h3 class="font-display text-2xl italic tracking-tight">Every skill, ranked</h3>
+      <p class="text-[11px] font-mono uppercase tracking-wider text-faint">stale first · then heaviest body</p>
+    </div>
+    {% set max_body = (report.skills | map(attribute='body_tokens') | max) or 1 %}
+    {% set max_exposed = (report.skills | map(attribute='exposed_in_sessions') | max) or 1 %}
+    <div class="bg-elev border border-line rounded-sm overflow-hidden">
+      <div class="grid grid-cols-[1.6fr_auto_auto_auto_auto] gap-x-6 px-4 py-2.5 border-b border-line text-[11px] font-mono uppercase tracking-wider text-faint">
+        <div>skill</div>
+        <div class="text-right">body tokens</div>
+        <div class="text-right">desc tokens</div>
+        <div class="text-right">exposed in</div>
+        <div class="text-right">consulted in</div>
+      </div>
+      {% for s in report.skills %}
+      <div class="bar grid grid-cols-[1.6fr_auto_auto_auto_auto] gap-x-6 items-baseline px-4 py-2.5 border-b border-line/60 last:border-b-0 text-sm font-mono row-hover
+                  {% if s.is_stale %}bg-coral/[0.03]{% endif %}"
+           style="--bar: {{ (s.body_tokens / max_body * 100) | round(1) }}%; --bar-color: rgba(196,94,88,0.08);">
+        <div class="truncate">
+          <span class="text-ink">{{ s.name }}</span>
+          {% if s.is_stale %}<span class="ml-2 text-[10px] uppercase tracking-wider text-coral" title="exposed in ≥10 Cursor sessions but no Cursor / Codex / Claude Code session mentions /this-skill/SKILL.md. could still be silent following in Cursor.">stale</span>{% endif %}
+          {% if s.description %}<div class="text-faint text-xs font-sans truncate mt-0.5">{{ s.description | trunc(120) }}</div>{% endif %}
+        </div>
+        <div class="text-right text-ink">{{ s.body_tokens | intfmt }}</div>
+        <div class="text-right text-dim">{{ s.description_tokens | intfmt }}</div>
+        <div class="text-right {% if s.exposed_in_sessions > 0 %}text-ink{% else %}text-faint{% endif %}">{{ s.exposed_in_sessions | intfmt }}</div>
+        <div class="text-right {% if s.consulted_in_sessions > 0 %}text-good{% else %}text-faint{% endif %}">{{ s.consulted_in_sessions | intfmt }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <div class="mt-10 pt-6 border-t border-line text-[11px] font-mono uppercase tracking-wider text-faint leading-relaxed">
+    <strong class="text-dim normal-case tracking-normal font-sans">how we define "stale":</strong>
+    <span class="normal-case tracking-normal font-sans text-dim">
+      a skill is marked stale when Cursor exposed it (listed its path in the
+      <span class="font-mono">&lt;available_skills&gt;</span> block) in at least 10 sessions, and
+      <em class="not-italic font-medium text-dim">no session in Cursor, Codex, or Claude Code</em> consulted it.
+      Skills match by name (the directory containing SKILL.md), so the same skill installed
+      under both <span class="font-mono">~/.cursor/skills/</span> and <span class="font-mono">~/.codex/skills/</span>
+      counts as one.
+      <br/><br/>
+      <strong class="text-dim font-sans">What counts as consultation:</strong> we parse each transcript as
+      structured JSON, not raw text. For Codex we keep only
+      <span class="font-mono">response_item.message</span> events with <span class="font-mono">role ∈ {user, assistant}</span>;
+      catalog injections live on <span class="font-mono">role = developer</span> and tool dumps live on
+      <span class="font-mono">function_call_output</span> / <span class="font-mono">exec_command_end</span>, so they're
+      dropped structurally. For Claude Code we keep only <span class="font-mono">type ∈ {user, assistant}</span>.
+      Within retained events we drop any single event that names ≥4 distinct skills (assistant echoing the catalog).
+      Bare-name matches (e.g. <span class="font-mono">baz-pr-comments</span> in prose) only count when the name
+      matches an actually-installed skill.
+      <br/><br/>
+      <strong class="text-dim font-sans">Known blind spot:</strong> Cursor transcripts don't expose structured tool calls,
+      so when Cursor silently follows a skill without quoting its path, we can't detect it. Stale means
+      "no visible evidence anywhere we can see" - not "definitely unused". If a stale skill is genuinely
+      load-bearing and rarely needed (a niche migration skill, for example), the cost is just description
+      tokens in every Cursor session - which may be a tax worth paying.
+    </span>
+  </div>
+{% endif %}

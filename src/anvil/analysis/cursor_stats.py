@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 
-from slop_meter.parsers.cursor_transcripts import CursorScanResult, SessionRecord
+from anvil.parsers.cursor_transcripts import CursorScanResult, SessionRecord
 
 
 @dataclass

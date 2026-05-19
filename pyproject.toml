@@ -3,14 +3,14 @@ requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
-name = "slop_meter"
+name = "anvil"
 version = "0.0.1"
-description = "How much of your AI workflow is shipping vs slop? Local-first AI-cost / GitHub-shipping calibration tool."
+description = "How much is your AI spend actually buying you? Local-first AI-cost vs GitHub-shipping calibration tool."
 authors = ["Pratyusha Duvvuri"]
 readme = "README.md"
 license = "MIT"
-homepage = "https://github.com/perfectlyrandom/slop_meter"
-repository = "https://github.com/perfectlyrandom/slop_meter"
+homepage = "https://github.com/perfectlyrandom/anvil"
+repository = "https://github.com/perfectlyrandom/anvil"
 keywords = ["ai", "llm", "claude-code", "cursor", "productivity", "developer-tools", "calibration"]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
@@ -19,7 +19,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Software Development",
 ]
-packages = [{ include = "slop_meter", from = "src" }]
+packages = [{ include = "anvil", from = "src" }]
 
 [tool.poetry.dependencies]
 python = "^3.13"
@@ -27,15 +27,13 @@ typer = "^0.15.0"
 rich = "^13.9.2"
 fastapi = "^0.115.0"
 uvicorn = { version = "^0.31.0", extras = ["standard"] }
-sqlalchemy = "^2.0.35"
-watchdog = "^5.0.3"
-keyring = "^25.4.1"
 pydantic = "^2.9.2"
 pydantic-settings = "^2.5.2"
 httpx = "^0.27.2"
 tiktoken = "^0.8.0"
 anthropic = "^0.69.0"
-python-dateutil = "^2.9.0"
+jinja2 = "^3.1.4"
+python-multipart = "^0.0.12"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.3"
@@ -44,10 +42,9 @@ pytest-asyncio = "^0.24.0"
 ruff = "^0.7.0"
 mypy = "^1.13.0"
 pre-commit = "^4.0.1"
-types-python-dateutil = "^2.9.0"
 
 [tool.poetry.scripts]
-slop_meter = "slop_meter.cli:app"
+anvil = "anvil.cli:app"
 
 [tool.ruff]
 line-length = 120

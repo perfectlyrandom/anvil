@@ -12,8 +12,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from slop_meter.connectors.github import PullRequestRecord
-from slop_meter.parsers.claude_code import ClaudeCodeScanResult
+from anvil.connectors.github import PullRequestRecord
+from anvil.parsers.claude_code import ClaudeCodeScanResult
 
 
 def _iso_week_key(when: datetime) -> str:

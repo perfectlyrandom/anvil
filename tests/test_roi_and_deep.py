@@ -6,11 +6,11 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from slop_meter.analysis.cursor_deep import deep_analyze
-from slop_meter.analysis.roi import correlate
-from slop_meter.connectors.github import PullRequestRecord
-from slop_meter.parsers.claude_code import scan_claude_code_projects
-from slop_meter.parsers.cursor_transcripts import scan_cursor_projects
+from anvil.analysis.cursor_deep import deep_analyze
+from anvil.analysis.roi import correlate
+from anvil.connectors.github import PullRequestRecord
+from anvil.parsers.claude_code import scan_claude_code_projects
+from anvil.parsers.cursor_transcripts import scan_cursor_projects
 
 
 def _write_jsonl(path: Path, lines: list[dict]) -> None:  # type: ignore[type-arg]
@@ -105,3 +105,45 @@ def test_deep_analysis_catches_repeated_prompts(tmp_path: Path) -> None:
     cluster = deep.repeated_prompt_clusters[0]
     assert len(cluster.session_ids) == 3
     assert "create a ticket" in cluster.canonical_first_query
+
+
+def test_deep_analysis_detects_forked_sessions(tmp_path: Path) -> None:
+    # Given: two sessions in the same workspace with byte-identical first 3 turns
+    ws_dir = tmp_path / "projects" / "ws-fork" / "agent-transcripts"
+    leading_turns = [
+        {
+            "role": "user",
+            "message": {"content": [{"type": "text", "text": "<user_query>build a feature X</user_query>"}]},
+        },
+        {
+            "role": "assistant",
+            "message": {"content": [{"type": "text", "text": "Sure, I'll start with the data layer."}]},
+        },
+        {
+            "role": "user",
+            "message": {"content": [{"type": "text", "text": "<user_query>ok go ahead</user_query>"}]},
+        },
+    ]
+    for sess_id, divergent in (("forkA", "do the API"), ("forkB", "do the UI")):
+        session_dir = ws_dir / sess_id
+        session_dir.mkdir(parents=True)
+        # Each session has the same first 3 turns then diverges on turn 4.
+        all_turns = [
+            *leading_turns,
+            {
+                "role": "assistant",
+                "message": {"content": [{"type": "text", "text": divergent}]},
+            },
+        ]
+        (session_dir / f"{sess_id}.jsonl").write_text("\n".join(json.dumps(t) for t in all_turns) + "\n")
+
+    # When: deep analysis runs
+    scan = scan_cursor_projects(tmp_path / "projects")
+    deep = deep_analyze(scan)
+
+    # Then: the fork detector flags both sessions as one duplicate cluster
+    assert len(deep.forked_session_clusters) == 1
+    cluster = deep.forked_session_clusters[0]
+    assert sorted(cluster.session_ids) == ["forkA", "forkB"]
+    assert cluster.identical_leading_turns >= 3
+    assert cluster.duplicated_token_cost > 0

@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>anvil - your AI spend vs what you shipped</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            base:    '#fbf8f3',  /* warm cream — like uncoated paper */
+            elev:    '#ffffff',  /* surfaces sit on the cream */
+            card:    '#ffffff',
+            line:    '#ebe4d9',  /* soft taupe border */
+            ink:     '#1c1a16',  /* warm near-black */
+            dim:     '#6b6660',  /* warm mid-gray */
+            faint:   '#a8a097',  /* warm light gray */
+            coral:   '#c45e58',  /* dusty rose — the accent, NOT default Tailwind red */
+            good:    '#5c8d6a',  /* muted sage for "shipped" */
+            warn:    '#b8853a',  /* warm mustard */
+          },
+          fontFamily: {
+            display: ['"Instrument Serif"', 'Georgia', 'serif'],
+            sans:    ['"Instrument Sans"', 'system-ui', 'sans-serif'],
+            mono:    ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+          },
+          letterSpacing: {
+            tightest: '-0.03em',
+          },
+        }
+      }
+    }
+  </script>
+  <style>
+    :root { color-scheme: light; }
+    body { font-feature-settings: 'ss01', 'ss02'; }
+    .nums { font-variant-numeric: tabular-nums; }
+    /* bars use a single accent at varied opacity, calibrated for cream backgrounds */
+    .bar { position: relative; }
+    .bar::before {
+      content: '';
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: var(--bar, 0%);
+      background: var(--bar-color, rgba(196,94,88,0.12));
+      transition: width 400ms ease-out;
+      z-index: 0;
+    }
+    .bar > * { position: relative; z-index: 1; }
+    pre { white-space: pre-wrap; word-break: break-word; }
+    /* htmx fragment fade-in */
+    .htmx-added { animation: fadein 280ms ease-out both; }
+    @keyframes fadein {
+      from { opacity: 0; transform: translateY(4px); }
+      to   { opacity: 1; transform: translateY(0);   }
+    }
+    /* tab underline */
+    .tab { position: relative; padding-bottom: 8px; }
+    .tab::after {
+      content: '';
+      position: absolute; left: 0; right: 0; bottom: -1px;
+      height: 2px;
+      background: transparent;
+      transition: background 180ms ease-out;
+    }
+    .tab[data-active="true"]::after { background: #c45e58; }
+    .tab[data-active="true"] { color: #1c1a16; }
+    .tab[data-active="false"] { color: #a8a097; }
+    .tab[data-active="false"]:hover { color: #6b6660; }
+    .tab.tab-emph[data-active="false"] { color: #c45e58; }
+    .tab.tab-emph[data-active="false"]:hover { color: #a04e48; }
+    /* chat scrollbar */
+    #chat-log::-webkit-scrollbar { width: 6px; }
+    #chat-log::-webkit-scrollbar-track { background: transparent; }
+    #chat-log::-webkit-scrollbar-thumb { background: #ebe4d9; border-radius: 3px; }
+    #chat-log::-webkit-scrollbar-thumb:hover { background: #a8a097; }
+    /* subtle row hover so tables feel alive */
+    .row-hover:hover { background: rgba(196, 94, 88, 0.04); }
+  </style>
+</head>
+<body class="bg-base text-ink min-h-screen font-sans nums antialiased">
+
+  <!-- top status strip — visually quiet so the data leads -->
+  <div class="border-b border-line bg-base">
+    <div class="max-w-[1400px] mx-auto px-8 py-2.5 flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-faint">
+      <div class="flex items-center gap-4">
+        <span class="inline-flex items-center gap-1.5">
+          <span class="size-1.5 rounded-full bg-coral"></span>
+          anvil v0.1
+        </span>
+        <span class="hidden sm:inline">local · read-only</span>
+      </div>
+      <div class="flex items-center gap-5">
+        {% if gh_login %}
+          <span>gh <span class="text-good normal-case">{{ gh_login }}</span></span>
+        {% else %}
+          <span class="text-warn">gh not authed</span>
+        {% endif %}
+        <span>model <span class="text-dim normal-case">{{ model }}</span></span>
+        <span>agent {% if agent_available %}<span class="text-good">ready</span>{% else %}<span class="text-warn">no key</span>{% endif %}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- editorial brand header -->
+  <header class="max-w-[1400px] mx-auto px-8 pt-14 pb-10">
+    <div class="flex items-end justify-between gap-8 flex-wrap">
+      <div>
+        <h1 class="font-display text-7xl md:text-8xl tracking-tight leading-[0.9]">
+          <span class="italic">anvil</span><span class="text-coral not-italic">.</span>
+        </h1>
+        <p class="mt-5 text-lg text-dim max-w-xl leading-relaxed font-sans">
+          How much is your AI spend actually <em class="text-ink not-italic font-medium">buying you</em>?
+          Local-first. Reads your Cursor and Claude Code history, prices it honestly, lines it up next to the PRs you actually shipped.
+        </p>
+      </div>
+      <div class="text-right text-[11px] font-mono uppercase tracking-wider text-faint shrink-0">
+        <div>~/.cursor/projects</div>
+        <div>~/.claude/projects</div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-[1400px] mx-auto px-8 pb-16 grid grid-cols-12 gap-10">
+
+    <!-- left: dashboard -->
+    <section class="col-span-12 lg:col-span-8">
+      <!-- tabs -->
+      <nav class="flex flex-wrap gap-8 text-sm font-sans font-medium border-b border-line mb-8"
+           hx-sync="this:replace">
+        <button class="tab" data-active="true" id="tab-overview"
+                hx-get="/fragments/overview" hx-target="#panel" hx-trigger="click, load"
+                onclick="setActive(this)">Overview</button>
+        <button class="tab" data-active="false" id="tab-deep"
+                hx-get="/fragments/deep" hx-target="#panel"
+                onclick="setActive(this)">Deep</button>
+        <button class="tab" data-active="false" id="tab-tips"
+                hx-get="/fragments/tips" hx-target="#panel"
+                onclick="setActive(this)">Tips</button>
+        <button class="tab" data-active="false" id="tab-skills"
+                hx-get="/fragments/skills" hx-target="#panel"
+                onclick="setActive(this)">Skills</button>
+        <button class="tab" data-active="false" id="tab-cost"
+                hx-get="/fragments/cost" hx-target="#panel"
+                onclick="setActive(this)">Cost</button>
+        <button class="tab" data-active="false" id="tab-shipped"
+                hx-get="/fragments/shipped" hx-target="#panel"
+                onclick="setActive(this)">Shipped</button>
+        <button class="tab" data-active="false" id="tab-roi"
+                hx-get="/fragments/roi" hx-target="#panel"
+                onclick="setActive(this)">ROI</button>
+        <button class="tab tab-emph" data-active="false" id="tab-coach"
+                hx-get="/fragments/coach" hx-target="#panel"
+                onclick="setActive(this)">Coach</button>
+      </nav>
+
+      <div id="panel">
+        <div class="text-sm font-mono text-faint flex items-center gap-2">
+          <span class="size-1.5 rounded-full bg-coral animate-pulse"></span>
+          scanning your local AI history…
+        </div>
+      </div>
+    </section>
+
+    <!-- right: chat agent -->
+    <aside class="col-span-12 lg:col-span-4 lg:sticky lg:top-8 self-start">
+      <div class="bg-elev border border-line rounded-sm flex flex-col h-[calc(100vh-7rem)] min-h-[600px] shadow-[0_1px_0_rgba(0,0,0,0.02),0_8px_24px_-12px_rgba(0,0,0,0.08)]">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-line">
+          <div>
+            <h2 class="font-display text-2xl italic leading-none">Ask</h2>
+            <p class="text-[11px] font-mono uppercase tracking-wider text-faint mt-1">read-only · local data only</p>
+          </div>
+          <button class="text-[11px] font-mono uppercase tracking-wider text-faint hover:text-coral transition-colors"
+                  hx-post="/chat/reset" hx-swap="none"
+                  onclick="document.getElementById('chat-log').innerHTML=''; document.getElementById('chat-empty').style.display='block'">reset</button>
+        </div>
+
+        <div id="chat-log" class="flex-1 overflow-y-auto px-5 py-4 space-y-4 text-sm">
+          <div id="chat-empty" class="text-dim text-sm leading-relaxed">
+            <p class="mb-3 italic font-display text-base text-ink">try one of these</p>
+            <ul class="space-y-2 text-dim">
+              <li><button class="hover:text-coral text-left" onclick="askExample(this)">› which prompts did i repeat most?</button></li>
+              <li><button class="hover:text-coral text-left" onclick="askExample(this)">› what's my biggest source of token bloat?</button></li>
+              <li><button class="hover:text-coral text-left" onclick="askExample(this)">› summarize my last 10 cursor sessions</button></li>
+              <li><button class="hover:text-coral text-left" onclick="askExample(this)">› what did i ship in the last 2 weeks?</button></li>
+            </ul>
+          </div>
+        </div>
+
+        <form hx-post="/chat" hx-target="#chat-log" hx-swap="beforeend"
+              hx-on::after-request="this.reset(); document.getElementById('chat-log').scrollTop=document.getElementById('chat-log').scrollHeight; document.getElementById('chat-empty').style.display='none'"
+              hx-indicator="#chat-thinking"
+              class="border-t border-line p-3 flex flex-col gap-2">
+          <div id="chat-thinking" class="htmx-indicator text-[11px] font-mono uppercase tracking-wider text-coral pl-2 flex items-center gap-1.5">
+            <span class="size-1.5 rounded-full bg-coral animate-pulse"></span>
+            thinking…
+          </div>
+          <div class="flex gap-2">
+            <input type="text" name="message" id="chat-input"
+                   placeholder="ask about your data…"
+                   required autocomplete="off"
+                   class="flex-1 bg-base border border-line rounded-sm px-3 py-2.5 text-sm font-sans text-ink placeholder:text-faint focus:outline-none focus:border-coral focus:bg-elev transition-colors" />
+            <button class="bg-coral hover:brightness-110 text-white font-sans font-semibold px-4 py-2.5 text-sm transition-all active:scale-95 rounded-sm">send →</button>
+          </div>
+        </form>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="max-w-[1400px] mx-auto px-8 py-6 border-t border-line">
+    <p class="text-[11px] font-mono uppercase tracking-wider text-faint">
+      not a leaderboard · not a productivity score · a calibration tool for one developer (you)
+    </p>
+  </footer>
+
+  <script>
+    function setActive(btn) {
+      document.querySelectorAll('nav .tab').forEach(b => b.setAttribute('data-active', 'false'));
+      btn.setAttribute('data-active', 'true');
+    }
+    function askExample(btn) {
+      const input = document.getElementById('chat-input');
+      input.value = btn.textContent.trim();
+      input.focus();
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,190 @@
+{% if error %}
+  <div class="bg-elev border border-line p-12 text-center rounded-sm">
+    <p class="font-mono text-sm text-warn mb-3">{{ error }}</p>
+    <p class="text-dim text-sm">Run <span class="font-mono text-faint">gh auth login</span>, then refresh this tab.</p>
+  </div>
+{% elif report is none or report.total_prs == 0 %}
+  <div class="bg-elev border border-line p-12 text-center rounded-sm">
+    <p class="font-mono text-sm text-dim">no PRs in the last {{ days }} days</p>
+  </div>
+{% else %}
+
+  {# --- window selector — re-fetches the fragment with a new `days` value --- #}
+  <div class="flex items-center gap-2 mb-6 text-[11px] font-mono uppercase tracking-wider">
+    <span class="text-faint">window</span>
+    {% for d in [7, 30, 90, 365] %}
+    <button hx-get="/fragments/shipped?days={{ d }}"
+            hx-target="#panel"
+            hx-swap="innerHTML"
+            class="px-2 py-1 transition-colors rounded-sm
+                   {% if d == days %}bg-coral/10 text-coral{% else %}text-dim hover:text-ink hover:bg-line/60{% endif %}">
+      {% if d == 365 %}1 year{% else %}{{ d }} days{% endif %}
+    </button>
+    {% endfor %}
+  </div>
+
+  {# --- the hero: meaningful + moved-the-needle, side by side --- #}
+  <div class="bg-elev border border-line mb-10 p-8 rounded-sm">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+      <div>
+        <div class="text-[11px] font-mono uppercase tracking-wider text-faint mb-3">moved the needle · last {{ days }} days</div>
+        <div class="font-display text-7xl md:text-8xl italic text-good leading-none nums">{{ report.by_tier.get('moved-the-needle', 0) | intfmt }}</div>
+        <p class="text-dim text-sm mt-3">PRs with strong product / perf / customer / architecture signal.</p>
+      </div>
+      <div>
+        <div class="text-[11px] font-mono uppercase tracking-wider text-faint mb-3">real work · last {{ days }} days</div>
+        <div class="font-display text-6xl md:text-7xl italic text-ink leading-none nums">{{ report.by_tier.get('real-work', 0) | intfmt }}</div>
+        <p class="text-dim text-sm mt-3">Solid fixes / features / refactors with at least some signal.</p>
+      </div>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8 text-sm">
+      <div class="text-dim">
+        <span class="font-mono text-faint">total prs</span>
+        <span class="text-ink font-medium ml-2 nums">{{ report.total_prs | intfmt }}</span>
+      </div>
+      <div class="text-dim">
+        <span class="font-mono text-faint">routine</span>
+        <span class="text-ink font-medium ml-2 nums">{{ report.by_tier.get('routine', 0) | intfmt }}</span>
+      </div>
+      <div class="text-dim">
+        <span class="font-mono text-faint">noise filtered</span>
+        <span class="text-ink font-medium ml-2 nums">{{ report.by_tier.get('noise', 0) | intfmt }}</span>
+      </div>
+    </div>
+    <p class="text-dim text-sm mt-6 max-w-3xl leading-relaxed">
+      Significance score (0-100) blends conventional-commits type, body keywords (customer, performance,
+      architecture, regression, tech debt), size (log-scaled), files touched, and review count.
+      <span class="font-mono text-faint">≥70 = moved the needle, 40-69 = real work, 15-39 = routine, &lt;15 = noise.</span>
+      Renames, typos, lint, and version bumps get pulled down even if they technically pass the LoC bar.
+    </p>
+  </div>
+
+  {# --- category strip — what kind of work shipped --- #}
+  <section class="mb-12">
+    <div class="flex items-baseline justify-between mb-4">
+      <h3 class="font-display text-2xl italic tracking-tight">What you shipped</h3>
+      <p class="text-[11px] font-mono uppercase tracking-wider text-faint">by type</p>
+    </div>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-px bg-line border border-line rounded-sm overflow-hidden">
+      <div class="bg-elev p-5">
+        <div class="text-[11px] font-mono uppercase tracking-wider text-faint">features</div>
+        <div class="text-3xl lg:text-4xl font-sans font-semibold tracking-tightest mt-2 text-ink nums">{{ report.by_category.get('feature', 0) | intfmt }}</div>
+      </div>
+      <div class="bg-elev p-5">
+        <div class="text-[11px] font-mono uppercase tracking-wider text-faint">bug fixes</div>
+        <div class="text-3xl lg:text-4xl font-sans font-semibold tracking-tightest mt-2 text-ink nums">{{ report.by_category.get('fix', 0) | intfmt }}</div>
+      </div>
+      <div class="bg-elev p-5">
+        <div class="text-[11px] font-mono uppercase tracking-wider text-faint">refactors</div>
+        <div class="text-3xl lg:text-4xl font-sans font-semibold tracking-tightest mt-2 text-ink nums">{{ (report.by_category.get('refactor', 0) + report.by_category.get('perf', 0)) | intfmt }}</div>
+      </div>
+      <div class="bg-elev p-5">
+        <div class="text-[11px] font-mono uppercase tracking-wider text-faint">substantial untagged</div>
+        <div class="text-3xl lg:text-4xl font-sans font-semibold tracking-tightest mt-2 text-ink nums">{{ report.by_category.get('other', 0) | intfmt }}</div>
+        <div class="text-[10px] font-mono text-faint mt-1">≥50 LoC, no convention</div>
+      </div>
+    </div>
+  </section>
+
+  {# --- size distribution --- #}
+  {% if report.by_size %}
+  <section class="mb-12">
+    <div class="flex items-baseline justify-between mb-4">
+      <h3 class="font-display text-2xl italic tracking-tight">Size distribution</h3>
+      <p class="text-[11px] font-mono uppercase tracking-wider text-faint">XS=&lt;10 LoC · S=10-50 · M=50-300 · L=300-1k · XL=&gt;1k</p>
+    </div>
+    {% set max_size = (report.by_size.values() | max) or 1 %}
+    <div class="bg-elev border border-line rounded-sm overflow-hidden">
+      {% for label in ['XS', 'S', 'M', 'L', 'XL'] %}
+      {% set count = report.by_size.get(label, 0) %}
+      <div class="bar row-hover grid grid-cols-[60px_1fr_auto] gap-x-6 items-center px-4 py-2.5 border-b border-line/60 last:border-b-0 text-sm font-mono"
+           style="--bar: {{ (count / max_size * 100) | round(1) }}%; --bar-color: rgba(92,141,106,0.15);">
+        <div class="text-ink font-semibold">{{ label }}</div>
+        <div class="text-faint">{{ {'XS': 'tiny / one-liners', 'S': 'small fixes', 'M': 'real features', 'L': 'big features', 'XL': 'major work'}[label] }}</div>
+        <div class="text-right text-good nums">{{ count | intfmt }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {# --- by repo --- #}
+  <section class="mb-12">
+    <div class="flex items-baseline justify-between mb-4">
+      <h3 class="font-display text-2xl italic tracking-tight">Where you shipped</h3>
+      <p class="text-[11px] font-mono uppercase tracking-wider text-faint">meaningful PRs by repo</p>
+    </div>
+    {% set top_repos = report.by_repo | selectattr('meaningful', 'gt', 0) | list %}
+    {% if top_repos %}
+      {% set max_meaningful = (top_repos | map(attribute='meaningful') | max) or 1 %}
+      <div class="bg-elev border border-line rounded-sm overflow-hidden">
+        <div class="grid grid-cols-[2fr_auto_auto_auto_auto_auto] gap-x-6 px-4 py-2.5 border-b border-line text-[11px] font-mono uppercase tracking-wider text-faint">
+          <div>repo</div>
+          <div class="text-right">meaningful</div>
+          <div class="text-right">feat</div>
+          <div class="text-right">fix</div>
+          <div class="text-right">refac</div>
+          <div class="text-right">loc</div>
+        </div>
+        {% for r in top_repos[:15] %}
+        <div class="bar row-hover grid grid-cols-[2fr_auto_auto_auto_auto_auto] gap-x-6 items-center px-4 py-2.5 border-b border-line/60 last:border-b-0 text-sm font-mono"
+             style="--bar: {{ (r.meaningful / max_meaningful * 100) | round(1) }}%; --bar-color: rgba(92,141,106,0.13);">
+          <div class="text-coral truncate">{{ r.repo }}</div>
+          <div class="text-right text-good nums">{{ r.meaningful | intfmt }}</div>
+          <div class="text-right text-ink nums">{{ r.features | intfmt }}</div>
+          <div class="text-right text-ink nums">{{ r.fixes | intfmt }}</div>
+          <div class="text-right text-dim nums">{{ r.refactors | intfmt }}</div>
+          <div class="text-right text-dim nums">{{ r.loc_meaningful | intfmt }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="text-dim text-sm font-mono">no meaningful PRs merged in this window.</p>
+    {% endif %}
+  </section>
+
+  {# --- showcase: highest-signal PRs first, ranked by significance score --- #}
+  <section>
+    <div class="flex items-baseline justify-between mb-4">
+      <h3 class="font-display text-2xl italic tracking-tight">Showcase</h3>
+      <p class="text-[11px] font-mono uppercase tracking-wider text-faint">ranked by significance · {{ login }}</p>
+    </div>
+    {% if report.top_meaningful %}
+      <div class="bg-elev border border-line rounded-sm overflow-hidden">
+        <div class="grid grid-cols-[auto_auto_auto_1.2fr_auto_3fr_auto] gap-x-5 px-4 py-2.5 border-b border-line text-[11px] font-mono uppercase tracking-wider text-faint">
+          <div>score</div>
+          <div>tier</div>
+          <div>type</div>
+          <div>repo</div>
+          <div class="text-right">#</div>
+          <div>title · signals</div>
+          <div class="text-right">loc</div>
+        </div>
+        {% for t in report.top_meaningful %}
+        <div class="bar row-hover grid grid-cols-[auto_auto_auto_1.2fr_auto_3fr_auto] gap-x-5 items-baseline px-4 py-2.5 border-b border-line/60 last:border-b-0 text-sm font-mono"
+             style="--bar: {{ (t.score / 100 * 100) | round(1) }}%; --bar-color: {% if t.tier.value == 'moved-the-needle' %}rgba(92,141,106,0.18){% else %}rgba(92,141,106,0.10){% endif %};">
+          <div class="text-{% if t.tier.value == 'moved-the-needle' %}good{% elif t.tier.value == 'real-work' %}ink{% else %}dim{% endif %} font-semibold nums">{{ t.score }}</div>
+          <div class="text-[11px] uppercase tracking-wider {% if t.tier.value == 'moved-the-needle' %}text-good{% else %}text-dim{% endif %}">{{ t.tier.value }}</div>
+          <div class="text-coral text-[11px] uppercase tracking-wider">{{ t.category.value }}</div>
+          <div class="text-dim truncate">{{ t.pr.repo | trunc(28) }}</div>
+          <div class="text-right text-faint">
+            <a class="hover:text-ink hover:underline" href="{{ t.pr.url }}" target="_blank">{{ t.pr.number }}</a>
+          </div>
+          <div class="min-w-0">
+            <div class="text-ink truncate">{{ t.pr.title | trunc(80) }}</div>
+            {% if t.signals %}
+            <div class="text-[10px] text-good mt-0.5 font-mono">
+              {% for s in t.signals %}<span class="mr-2">+{{ s }}</span>{% endfor %}
+            </div>
+            {% endif %}
+          </div>
+          <div class="text-right text-dim nums">{{ t.pr.total_lines_changed | intfmt }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="text-dim text-sm font-mono">nothing meaningful in the window yet.</p>
+    {% endif %}
+  </section>
+
+{% endif %}

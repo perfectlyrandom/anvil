@@ -1,17 +1,17 @@
-# slop_meter
+# anvil
 
-> How much of your AI workflow is shipping vs slop?
+> How much is your AI spend actually buying you?
 
-A local-first personal tool that puts your Cursor + Claude Code spend next to your GitHub shipping velocity. Honest enough to tell you when your AI tools are just slop.
+A local-first personal tool. Reads your Cursor and Claude Code history, prices it honestly, and lines it up next to the PRs you actually shipped.
 
 ```bash
-pipx install slop_meter
-slop_meter init
-slop_meter sync
-slop_meter web
+pipx install anvil
+anvil init
+anvil sync
+anvil web
 ```
 
-[![CI](https://github.com/perfectlyrandom/slop_meter/actions/workflows/ci.yaml/badge.svg)](https://github.com/perfectlyrandom/slop_meter/actions/workflows/ci.yaml)
+[![CI](https://github.com/perfectlyrandom/anvil/actions/workflows/ci.yaml/badge.svg)](https://github.com/perfectlyrandom/anvil/actions/workflows/ci.yaml)
 
 ## Status
 
@@ -21,7 +21,7 @@ Pre-alpha. Scaffolding only. See the [roadmap](#roadmap) below.
 
 A calibration tool. It reads your local AI-tool transcripts (Claude Code JSONL, Cursor's `ai-code-tracking.db`) plus your GitHub PR history, and shows you whether your AI spend is correlated with your shipping velocity.
 
-It is informed by [the METR study](https://metr.org/blog/2025-07-10-early-2025-ai-experienced-os-dev-study/) - experienced developers thought AI made them 24% faster while measured outcomes showed 19% slower. slop_meter is built around honest calibration, not validation.
+It is informed by [the METR study](https://metr.org/blog/2025-07-10-early-2025-ai-experienced-os-dev-study/) - experienced developers thought AI made them 24% faster while measured outcomes showed 19% slower. anvil is built around honest calibration, not validation.
 
 ## What this isn't
 
@@ -46,31 +46,31 @@ Coming in v0.2 (~4-6 weeks after launch):
 Phase 2 (the original "hook into prompts before they hit the model" ask):
 
 - **Optional proxy mode** - mitmproxy + local CA cert for users who want exact prompt-byte capture.
-- **SDK wrapper companion** - `slop_meter-sdk` for notebook / LangChain users writing their own agent code.
+- **SDK wrapper companion** - `anvil-sdk` for notebook / LangChain users writing their own agent code.
 
 ## Install (placeholder until v0.1 ships to PyPI)
 
 ```bash
 # from source for now
-git clone https://github.com/perfectlyrandom/slop_meter.git
-cd slop_meter
+git clone https://github.com/perfectlyrandom/anvil.git
+cd anvil
 pipx install -e .
 ```
 
 ## CLI surface
 
 ```text
-slop_meter init                  # one-time setup, prompts for GitHub PAT (stored via keyring)
-slop_meter watch                 # foreground daemon, watches Claude Code / Cursor for new turns
-slop_meter watch --daemon        # background, PID file in ~/.slop_meter/
-slop_meter web                   # FastAPI dashboard on 127.0.0.1:7331, opens browser
-slop_meter top                   # Rich live TUI ("htop mode")
-slop_meter sync                  # one-shot pull from all sources
-slop_meter query "SELECT ..."    # raw SQL escape hatch (Datasette-style)
-slop_meter config show
-slop_meter telemetry on|off|status
-slop_meter doctor                # checks permissions, keychain, schema version
-slop_meter export                # dump ~/.slop_meter/data.db to a shareable file
+anvil init                  # one-time setup, prompts for GitHub PAT (stored via keyring)
+anvil watch                 # foreground daemon, watches Claude Code / Cursor for new turns
+anvil watch --daemon        # background, PID file in ~/.anvil/
+anvil web                   # FastAPI dashboard on 127.0.0.1:7331, opens browser
+anvil top                   # Rich live TUI ("htop mode")
+anvil sync                  # one-shot pull from all sources
+anvil query "SELECT ..."    # raw SQL escape hatch (Datasette-style)
+anvil config show
+anvil telemetry on|off|status
+anvil doctor                # checks permissions, keychain, schema version
+anvil export                # dump ~/.anvil/data.db to a shareable file
 ```
 
 ## Development

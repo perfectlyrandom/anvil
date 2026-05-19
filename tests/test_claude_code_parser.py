@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from slop_meter.analysis.claude_cost import build_cost_report
-from slop_meter.analysis.pricing import cache_hit_rate, estimate_cost, price_for_model
-from slop_meter.parsers.claude_code import (
+from anvil.analysis.claude_cost import build_cost_report
+from anvil.analysis.pricing import cache_hit_rate, estimate_cost, price_for_model
+from anvil.parsers.claude_code import (
     TurnUsage,
     parse_session_file,
     scan_claude_code_projects,

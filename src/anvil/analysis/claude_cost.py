@@ -9,13 +9,12 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 
-from slop_meter.analysis.pricing import (
-    UNKNOWN_MODEL_FALLBACK,
+from anvil.analysis.pricing import (
     cache_hit_rate,
     estimate_cost,
     price_for_model,
 )
-from slop_meter.parsers.claude_code import ClaudeCodeScanResult, ClaudeCodeSession, TurnUsage
+from anvil.parsers.claude_code import ClaudeCodeScanResult, ClaudeCodeSession, TurnUsage
 
 
 @dataclass
@@ -154,8 +153,6 @@ def build_cost_report(scan: ClaudeCodeScanResult, *, top_sessions: int = 10) -> 
     overall_hit = None
     if total_cache_read + total_input > 0:
         overall_hit = total_cache_read / (total_cache_read + total_input)
-    fallback_price = price_for_model("claude-sonnet-4-5") or UNKNOWN_MODEL_FALLBACK
-    del fallback_price  # silence unused-warning; reserved for future fallback display
 
     return ClaudeCodeCostReport(
         total_sessions=len(scan.sessions),
