@@ -1,0 +1,95 @@
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "slop_meter"
+version = "0.0.1"
+description = "How much of your AI workflow is shipping vs slop? Local-first AI-cost / GitHub-shipping calibration tool."
+authors = ["Pratyusha Duvvuri"]
+readme = "README.md"
+license = "MIT"
+homepage = "https://github.com/perfectlyrandom/slop_meter"
+repository = "https://github.com/perfectlyrandom/slop_meter"
+keywords = ["ai", "llm", "claude-code", "cursor", "productivity", "developer-tools", "calibration"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development",
+]
+packages = [{ include = "slop_meter", from = "src" }]
+
+[tool.poetry.dependencies]
+python = "^3.13"
+typer = "^0.15.0"
+rich = "^13.9.2"
+fastapi = "^0.115.0"
+uvicorn = { version = "^0.31.0", extras = ["standard"] }
+sqlalchemy = "^2.0.35"
+watchdog = "^5.0.3"
+keyring = "^25.4.1"
+pydantic = "^2.9.2"
+pydantic-settings = "^2.5.2"
+httpx = "^0.27.2"
+tiktoken = "^0.8.0"
+anthropic = "^0.69.0"
+python-dateutil = "^2.9.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.3"
+pytest-cov = "^5.0.0"
+pytest-asyncio = "^0.24.0"
+ruff = "^0.7.0"
+mypy = "^1.13.0"
+pre-commit = "^4.0.1"
+types-python-dateutil = "^2.9.0"
+
+[tool.poetry.scripts]
+slop_meter = "slop_meter.cli:app"
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "RUF", # ruff-specific
+]
+ignore = ["E501"] # line too long (handled by formatter)
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+namespace_packages = true
+explicit_package_bases = true
+mypy_path = "src"
+
+# Some deps don't ship type stubs, or pre-commit's mypy runs in an isolated venv
+# without the project deps installed. Silence missing-import errors for those.
+[[tool.mypy.overrides]]
+module = [
+    "tiktoken",
+    "tiktoken.*",
+    "anthropic",
+    "anthropic.*",
+    "uvicorn",
+    "uvicorn.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra --strict-markers --strict-config"
+testpaths = ["tests"]
+asyncio_mode = "auto"
