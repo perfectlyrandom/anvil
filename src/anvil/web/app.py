@@ -44,13 +44,13 @@ def _format_int(value: int | float) -> str:
 
 def _format_pct(value: float | None) -> str:
     if value is None:
-        return "—"
+        return "-"
     return f"{value * 100:.1f}%"
 
 
 def _format_usd(value: float | None) -> str:
     if value is None:
-        return "—"
+        return "-"
     return f"${value:,.2f}"
 
 
@@ -85,6 +85,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         claude_projects_dir=Path.home() / ".claude" / "projects",
         codex_sessions_dir=settings.codex_sessions_dir,
         cursor_tracking_db=settings.cursor_tracking_db,
+        cursor_state_db=settings.cursor_state_db,
         default_pricing_model=settings.default_pricing_model,
         github_login=gh_login,
     )
@@ -150,11 +151,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         claude_scan = cache.claude(claude_projects_dir)
         codex_scan = cache.codex(settings.codex_sessions_dir)
         tracking = cache.cursor_tracking(settings.cursor_tracking_db)
+        bubbles = cache.cursor_bubbles(settings.cursor_state_db)
         breakdown = build_cost_breakdown(
             cursor_scan,
             claude_scan,
             codex_scan,
             cursor_tracking=tracking,
+            cursor_bubbles=bubbles,
             fallback_model=settings.default_pricing_model,
         )
         return templates.TemplateResponse(request, "_cost.html", {"breakdown": breakdown})
@@ -166,11 +169,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         claude_scan = cache.claude(claude_projects_dir)
         codex_scan = cache.codex(settings.codex_sessions_dir)
         tracking = cache.cursor_tracking(settings.cursor_tracking_db)
+        bubbles = cache.cursor_bubbles(settings.cursor_state_db)
         breakdown = build_cost_breakdown(
             cursor_scan,
             claude_scan,
             codex_scan,
             cursor_tracking=tracking,
+            cursor_bubbles=bubbles,
             fallback_model=settings.default_pricing_model,
         )
         deep = deep_analyze(cursor_scan) if cursor_scan.sessions else None
@@ -190,6 +195,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             try:
                 prs = cache.prs(gh_login, 90)
                 shipped = build_shipped_report(prs, window_days=90)
+                shipped.reviews_given = cache.reviews_given_count(gh_login, 90)
             except GitHubConnectorError:
                 shipped = None
         report = run_coach(
@@ -300,6 +306,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except GitHubConnectorError as exc:
             return templates.TemplateResponse(request, "_shipped.html", {"report": None, "error": str(exc)})
         report = build_shipped_report(prs, window_days=days)
+        report.reviews_given = cache.reviews_given_count(gh_login, days)
         return templates.TemplateResponse(
             request,
             "_shipped.html",

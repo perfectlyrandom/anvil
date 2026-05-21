@@ -3,14 +3,14 @@
 This is deliberately opinionated. The dashboard already shows you numbers; the coach
 turns those numbers into a roast plus a concrete fix. Each issue has:
 
-* ``severity`` — ``critical`` / ``high`` / ``medium`` / ``low``. Ordering matters; the UI
+* ``severity`` - ``critical`` / ``high`` / ``medium`` / ``low``. Ordering matters; the UI
   shows them in this order and treats critical/high differently.
-* ``title`` — one line, no equivocation. "You're burning Opus dollars on Sonnet work."
-* ``body`` — 1-3 sentences with the actual numbers driving the verdict.
-* ``action`` — what to do next, in imperative voice.
-* ``evidence`` — optional dict the UI can render as a small table (key→value pairs).
+* ``title`` - one line, no equivocation. "You're burning Opus dollars on Sonnet work."
+* ``body`` - 1-3 sentences with the actual numbers driving the verdict.
+* ``action`` - what to do next, in imperative voice.
+* ``evidence`` - optional dict the UI can render as a small table (key→value pairs).
 
-We're explicit about NOT calling an LLM here — these checks need to be fast, deterministic,
+We're explicit about NOT calling an LLM here - these checks need to be fast, deterministic,
 and run on every dashboard refresh. The LLM agent is available separately if the user
 wants to chat about a specific issue.
 """
@@ -50,7 +50,7 @@ class CoachIssue:
 @dataclass
 class CoachReport:
     issues: list[CoachIssue]
-    grade: str  # 'A' / 'B' / 'C' / 'D' / 'F' — visual at-a-glance
+    grade: str  # 'A' / 'B' / 'C' / 'D' / 'F' - visual at-a-glance
     one_line_summary: str  # the headline above the grade
 
     @property
@@ -82,7 +82,7 @@ def _check_overpaying_for_model(cost: CostBreakdownReport) -> CoachIssue | None:
         body=(
             f"Your biggest spend row is {expensive_label} on {top.project} at ${top.estimated_usd:.2f}. "
             f"The same input/output mix on {cheaper_label} would have cost "
-            f"${top.cheaper_alternative_usd or 0:.2f} — a {(save / top.estimated_usd * 100):.0f}% cut."
+            f"${top.cheaper_alternative_usd or 0:.2f} - a {(save / top.estimated_usd * 100):.0f}% cut."
         ),
         action=(
             f"For routine engineering work, default to {cheaper_label}. "
@@ -108,7 +108,7 @@ def _check_cache_neglect(cost: CostBreakdownReport) -> CoachIssue | None:
     return CoachIssue(
         id="cache_neglect",
         severity=severity,
-        title=f"Cache hit rate is {cost.cache.hit_rate * 100:.0f}% — that's a leak.",
+        title=f"Cache hit rate is {cost.cache.hit_rate * 100:.0f}% - that's a leak.",
         body=(
             f"You moved {cost.cache.cacheable_input_tokens:,} tokens of cacheable input but only "
             f"{cost.cache.cached_input_tokens:,} actually hit cache. The rest paid full input rate."
@@ -211,9 +211,9 @@ def _check_attached_files_bloat(agg: CursorAggregate) -> CoachIssue | None:
         ),
         action={
             "attached_files": "Attach by section, not whole file. Use @file:lines syntax. Trust the model to read in if it needs more.",
-            "workspace_rule": "Audit your .cursor/rules — most always-apply rules are read once and ignored. Use agent-requested rules.",
+            "workspace_rule": "Audit your .cursor/rules - most always-apply rules are read once and ignored. Use agent-requested rules.",
             "external_links": "Pasting URLs costs tokens for the fetch. Quote the 2-3 lines you care about instead.",
-            "available_skills": "See Skills tab — kill any skill that's exposed but never consulted.",
+            "available_skills": "See Skills tab - kill any skill that's exposed but never consulted.",
         }.get(heaviest.name, "Reduce what you hand over by default; let the model pull on demand."),
         evidence={
             "bucket": heaviest.name,
@@ -225,42 +225,65 @@ def _check_attached_files_bloat(agg: CursorAggregate) -> CoachIssue | None:
 
 
 def _check_roi_mismatch(cost: CostBreakdownReport, shipped: ShippedReport | None) -> CoachIssue | None:
-    """If you've burned real money and shipped little, that's the conversation."""
+    """ROI sanity check that counts more than just merged PRs.
+
+    PRs are one slice of output. Reviewing teammates' code is another we CAN measure
+    via gh. Things we currently CAN'T measure (PRDs, RFCs, architecture docs, Slack
+    threads, debugging investigations, tickets) are surfaced as caveats so the user
+    isn't told "you shipped nothing" when they actually shipped a doc.
+    """
     if shipped is None:
         return None
     if cost.grand_total_usd < 20:
         return None
     moved_needle = shipped.by_tier.get(SignificanceTier.moved_needle.value, 0)
     real_work = shipped.by_tier.get(SignificanceTier.real_work.value, 0)
-    impactful = moved_needle + real_work
+    impactful_authored = moved_needle + real_work
+    reviews_given = shipped.reviews_given or 0
+    impactful = impactful_authored + reviews_given
     if impactful == 0:
         cost_per = float("inf")
     else:
         cost_per = cost.grand_total_usd / impactful
-    # Threshold: > $40 per impactful PR is suspicious, > $100 is real.
+    # Threshold: > $40 per output is suspicious, > $100 is real.
     if cost_per < 40:
         return None
     severity: Severity = "high" if cost_per > 100 or impactful == 0 else "medium"
+    output_label = (
+        f"{impactful_authored} meaningful PR{'s' if impactful_authored != 1 else ''}"
+        f" + {reviews_given} review{'s' if reviews_given != 1 else ''}"
+    )
+    caveat = (
+        " PRDs, architecture docs, tickets, and Slack threads aren't counted here - "
+        "if a lot of your output is in those forms, the ratio above understates your real ROI."
+    )
+    if impactful > 0:
+        body = (
+            f"That's ${cost_per:.0f} per measured output. The AI may not be earning its keep on the "
+            "engineering work I CAN see, OR a meaningful chunk of your output landed in formats I can't measure."
+            + caveat
+        )
+    else:
+        body = (
+            "I can see real spend but no merged PRs and no reviews given on GitHub. "
+            "Either the AI isn't pulling weight, or your work is landing as docs/tickets/threads I can't see." + caveat
+        )
     return CoachIssue(
         id="roi_mismatch",
         severity=severity,
-        title=(f"${cost.grand_total_usd:.0f} burned · {impactful} meaningful PRs in " f"{shipped.window_days}d."),
-        body=(
-            f"That's ${cost_per:.0f} per impactful PR (or no PRs at all). Either the AI isn't "
-            "earning its keep on this work or your PR titles are too modest to score above 'routine'."
-            if impactful > 0
-            else "You spent real money and shipped nothing scored above 'routine'. Either the AI "
-            "isn't earning its keep, or your PR titles + descriptions undersell the work."
-        ),
+        title=f"${cost.grand_total_usd:.0f} burned · {output_label} in {shipped.window_days}d.",
+        body=body,
         action=(
-            "Write better PR descriptions — the significance score reads them for customer/perf/"
-            "architecture signals. If the work genuinely is mostly routine, look at the "
-            "cheaper-model wins on the Cost tab."
+            "If your output is mostly docs/RFCs/tickets, that's fine - just know this ratio undercounts it. "
+            "If it's mostly engineering, write fuller PR descriptions (the score reads them for customer/perf/architecture signals) "
+            "and check the Cost tab for cheaper-model wins."
         ),
         evidence={
             "spend": f"${cost.grand_total_usd:.2f}",
-            "meaningful PRs": str(impactful),
-            "$ per impactful PR": f"${cost_per:.0f}" if impactful else "n/a",
+            "meaningful PRs authored": str(impactful_authored),
+            "reviews given": str(reviews_given),
+            "$ per measured output": f"${cost_per:.0f}" if impactful else "n/a",
+            "not measured": "PRDs, RFCs, architecture docs, tickets, Slack threads",
         },
     )
 
@@ -282,7 +305,7 @@ def _check_missing_signals(
     return CoachIssue(
         id="missing_signals",
         severity="low",
-        title="Some inputs are missing — verdict is partial.",
+        title="Some inputs are missing - verdict is partial.",
         body=(
             "The coach can only roast you on data it can see. The following streams aren't "
             "fully populated, so dollar estimates and ROI checks are best-effort."
@@ -301,7 +324,7 @@ def _assign_grade(issues: list[CoachIssue]) -> tuple[str, str]:
     high = sum(1 for i in issues if i.severity == "high")
     med = sum(1 for i in issues if i.severity == "medium")
     if crit > 0:
-        return "F", f"{crit} critical {'issue' if crit == 1 else 'issues'} — fix these first."
+        return "F", f"{crit} critical {'issue' if crit == 1 else 'issues'} - fix these first."
     if high >= 3:
         return "D", "Multiple high-severity leaks. You're not poor, you're paying the lazy tax."
     if high >= 1:

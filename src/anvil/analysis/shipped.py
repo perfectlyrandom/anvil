@@ -1,23 +1,23 @@
-"""Classify GitHub PRs by significance — a tiered score, not a binary.
+"""Classify GitHub PRs by significance - a tiered score, not a binary.
 
-Raw PR counts are misleading — version bumps, lockfile updates, automated changelog
+Raw PR counts are misleading - version bumps, lockfile updates, automated changelog
 PRs, and reverts all inflate the number without representing real product work. A
 ≥50-LoC bar is also too coarse: a 60-LoC rename is not equivalent to a 60-LoC
 performance fix that moves customer experience.
 
 So we score each PR on a 0-100 scale and bucket into four tiers:
 
-* **moved-the-needle** (≥70) — perf/feat/architecture/customer signal, sizeable, reviewed.
-* **real work** (40-69) — solid fix/feat/refactor with at least some signal.
-* **routine** (15-39) — small, narrow, but legitimate engineering work.
-* **noise** (<15 or noise-pattern match) — bumps, reverts, lint, typo, bot, etc.
+* **moved-the-needle** (≥70) - perf/feat/architecture/customer signal, sizeable, reviewed.
+* **real work** (40-69) - solid fix/feat/refactor with at least some signal.
+* **routine** (15-39) - small, narrow, but legitimate engineering work.
+* **noise** (<15 or noise-pattern match) - bumps, reverts, lint, typo, bot, etc.
 
 Inputs to the score:
 
 * Conventional-commits type (``feat`` / ``perf`` / ``fix`` / ``refactor`` / …).
-* PR body keyword signals — "customer", "performance"/"latency", "architecture"/
+* PR body keyword signals - "customer", "performance"/"latency", "architecture"/
   "migration", "regression"/"incident", "tech debt".
-* Negative title signals — "rename", "typo", "comment-only", "lint".
+* Negative title signals - "rename", "typo", "comment-only", "lint".
 * Size (logarithmic so 10K-LoC PRs don't dominate).
 * Files touched (cross-cutting > single-file work).
 * Review count as a soft significance signal (un-reviewed merges weigh less).
@@ -75,7 +75,7 @@ _CONVENTIONAL_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Title patterns that mean "not real work shipped." Conservative — only match clearly trivial.
+# Title patterns that mean "not real work shipped." Conservative - only match clearly trivial.
 _NOISE_PATTERNS = [
     re.compile(p, re.IGNORECASE)
     for p in (
@@ -119,7 +119,7 @@ _CATEGORY_BASE_SCORE: dict[PrCategory, int] = {
     PrCategory.ci: 0,
     PrCategory.build: 0,
     PrCategory.revert: -50,
-    PrCategory.other: 5,  # an untagged PR isn't zero — it's just unlabeled
+    PrCategory.other: 5,  # an untagged PR isn't zero - it's just unlabeled
 }
 
 
@@ -200,7 +200,7 @@ _BODY_SIGNAL_GROUPS: list[tuple[str, int, list[str]]] = [
 ]
 
 
-# Title-only penalties — these don't override conventional-commits type, they pull it down.
+# Title-only penalties - these don't override conventional-commits type, they pull it down.
 # Calibrated so a "feat: rename ..." PR scores < 40 (the meaningful threshold) even at
 # medium size with normal reviewer count. Renames, typos, lint, and formatting are exactly
 # the category of "looks like feat but isn't meaningful product work" the user called out.
@@ -308,7 +308,7 @@ def score_pr(pr: PullRequestRecord) -> tuple[int, SignificanceTier, list[str]]:
     cat = categorize_title(pr.title)
     raw = _CATEGORY_BASE_SCORE.get(cat, 0)
 
-    # Title penalties — these can pull a feat: rename below the meaningful line, which
+    # Title penalties - these can pull a feat: rename below the meaningful line, which
     # is the whole point of having them.
     for pattern, penalty in _TITLE_PENALTY_RES:
         if pattern.search(pr.title or ""):
@@ -384,6 +384,10 @@ class ShippedReport:
     top_meaningful: list[TriagedPr]
     moved_the_needle: list[TriagedPr]  # subset of top_meaningful, score ≥ 70
     window_days: int
+    # Optional broader-output signals from GitHub. None when we couldn't fetch them.
+    # These are additional outputs the user produces that the PR-author signal misses
+    # entirely (reviewing teammates' code, for example).
+    reviews_given: int | None = None
 
     @property
     def meaningful_share(self) -> float:
@@ -446,7 +450,7 @@ def build_shipped_report(prs: list[PullRequestRecord], *, window_days: int = 90)
     by_repo = sorted(by_repo_map.values(), key=lambda r: (r.meaningful, r.loc_meaningful), reverse=True)
 
     # Showcase: highest-significance PRs first, with recency as tiebreak. This is the
-    # list that drives the "top shipped" carousel — significance > raw LoC.
+    # list that drives the "top shipped" carousel - significance > raw LoC.
     top_meaningful = sorted(
         meaningful_only,
         key=lambda t: (

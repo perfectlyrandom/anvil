@@ -10,10 +10,10 @@ Each line is a structured event with::
 
 The fields we care about, by event type:
 
-* ``session_meta.payload`` — ``id``, ``timestamp``, ``cwd``, ``originator`` ("Codex CLI" /
+* ``session_meta.payload`` - ``id``, ``timestamp``, ``cwd``, ``originator`` ("Codex CLI" /
   "Codex Desktop"), ``model_provider`` ("openai" / "azure" / ...).
-* ``turn_context.payload.model`` — the model used for that turn (e.g. ``gpt-5.5``).
-* ``event_msg.payload.type == "token_count"`` — carries
+* ``turn_context.payload.model`` - the model used for that turn (e.g. ``gpt-5.5``).
+* ``event_msg.payload.type == "token_count"`` - carries
   ``payload.info.total_token_usage`` (cumulative across the session) and
   ``payload.info.last_token_usage`` (this turn). Fields:
   ``input_tokens``, ``cached_input_tokens``, ``output_tokens``,
@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class CodexTokenUsage:
-    """Codex's token bucketing — slightly different from Anthropic's.
+    """Codex's token bucketing - slightly different from Anthropic's.
 
     Note: ``cached_input_tokens`` is a SUBSET of ``input_tokens`` in OpenAI's accounting
     (cached tokens are still input, just billed cheaper). We track them separately so

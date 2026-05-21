@@ -2,11 +2,11 @@
 
 Each tool exposes a different amount of usage data:
 
-* **Cursor** — no model, no token counts, no API key, no cost. We can ESTIMATE prompt
+* **Cursor** - no model, no token counts, no API key, no cost. We can ESTIMATE prompt
   tokens via tiktoken but we can't price them honestly because we don't know the model.
   So Cursor shows up here only as a "tokens, but unpriced" line item.
-* **Claude Code** — full per-turn usage with model. Anthropic pricing applies.
-* **Codex CLI** — per-session cumulative usage with model and provider. OpenAI pricing.
+* **Claude Code** - full per-turn usage with model. Anthropic pricing applies.
+* **Codex CLI** - per-session cumulative usage with model and provider. OpenAI pricing.
 
 This module rolls everything up into a ``CostBreakdownReport`` with rows that can be
 filtered/segmented by source, provider, model, and project (cwd) on the dashboard.
@@ -26,6 +26,7 @@ from anvil.analysis.pricing import (
 )
 from anvil.parsers.claude_code import ClaudeCodeScanResult
 from anvil.parsers.codex import CodexScanResult, CodexSession
+from anvil.parsers.cursor_bubbles import CursorBubbleResult
 from anvil.parsers.cursor_tracking import CursorTrackingResult
 from anvil.parsers.cursor_transcripts import CursorScanResult
 
@@ -97,6 +98,8 @@ class CostBreakdownReport:
     grand_total_output_tokens: int = 0
     cursor_sessions_unpriced: int = 0  # legacy name; now = sessions estimated against fallback model
     cursor_sessions_priced: int = 0  # Cursor sessions priced against a known model from the DB
+    cursor_sessions_token_measured: int = 0  # sessions where state.vscdb gave real token counts
+    cursor_sessions_token_estimated: int = 0  # sessions where we had to estimate tokens from text
     cache: CacheStats = field(default_factory=CacheStats)
     # Top model-switch recommendations: rows sorted by potential savings descending.
     switch_recommendations: list[CostRow] = field(default_factory=list)
@@ -119,7 +122,7 @@ def _project_label(cwd: str | Path | None) -> str:
 def _cheaper_in_family(model: str) -> str | None:
     """Return a strictly-cheaper-but-still-capable peer model, or None.
 
-    The list is judgmental, not algorithmic — we only suggest swaps where the cheaper
+    The list is judgmental, not algorithmic - we only suggest swaps where the cheaper
     model is plausibly "good enough" for routine engineering work. A model recommends
     against Opus → Haiku because that's a real quality drop; Opus → Sonnet is fine.
     """
@@ -228,7 +231,7 @@ def _rows_from_claude_code(scan: ClaudeCodeScanResult) -> list[CostRow]:
             row.output_tokens += usage.output_tokens
             row.cached_input_tokens += usage.cache_read_input_tokens
             row.cache_creation_tokens += usage.cache_creation_input_tokens
-    # Cost pass — done once per row at the end so we don't repeatedly look up pricing.
+    # Cost pass - done once per row at the end so we don't repeatedly look up pricing.
     for row in grouped.values():
         price = price_for_model(row.model)
         if price is None:
@@ -257,52 +260,109 @@ def _rows_from_claude_code(scan: ClaudeCodeScanResult) -> list[CostRow]:
 def _rows_from_cursor(
     scan: CursorScanResult,
     tracking: CursorTrackingResult,
+    bubbles: CursorBubbleResult,
     fallback_model: str,
 ) -> list[CostRow]:
-    """Price Cursor sessions using the AI-tracking DB where available, fallback otherwise.
+    """Price Cursor sessions, preferring real measured tokens from state.vscdb.
 
-    The tracking DB only stores AI-generated code chunks, so it covers maybe 5% of
-    sessions (the ones that wrote code into the buffer). For the remaining 95% we use
-    ``fallback_model`` as a calibrated guess - the user's ``default_pricing_model``,
-    which can be overridden by the observed distribution from the DB if that exists.
+    Cursor data lives in two distinct stores that rarely overlap on this user's disk:
 
-    We bucket by (model, project) so a workspace that flipped between Opus and Sonnet
-    shows up as two rows. Sessions priced from real DB attribution are NOT marked
-    estimated; fallback sessions ARE.
+    1. ``~/.cursor/projects/.../agent-transcripts/<sessionId>.jsonl`` -- newer
+       agent-mode chats. These almost always use the user's own API key (BYOK), so
+       Cursor never records token counts for them. We estimate from text via tiktoken.
+    2. ``state.vscdb`` ``bubbleId:<sessionId>:<bubbleId>`` rows -- older composer/chat
+       sessions that hit Cursor's billed models. Each bubble has real ``inputTokens``
+       and ``outputTokens``. BYOK bubbles are zero, so the parser already filtered
+       them out.
+
+    Strategy: for each transcript session, prefer bubble tokens when they happen to
+    line up (rare on this corpus). Then sweep up any bubble session IDs that had no
+    transcript counterpart and emit them as their own rows under a synthetic
+    ``(Cursor composer)`` project so the user can SEE that historical real-token
+    Cursor spend rather than having it vanish.
+
+    Bucket key is ``(model, project, model_estimated, source_is_bubble)``.
     """
-    if not scan.sessions:
+    if not scan.sessions and not bubbles.observations:
         return []
-    # If we observed a clear modal model from the DB, use it as the fallback instead of
-    # the static default - more honest than always assuming Opus for everyone.
     if tracking.model_distribution:
         observed_modal = tracking.model_distribution.most_common(1)[0][0]
         fallback_model = observed_modal
 
-    grouped: dict[tuple[str, str, bool], CostRow] = {}
-    for session in scan.sessions:
-        project = _project_label(session.workspace)
-        model = tracking.model_for(session.session_id)
-        is_estimated = model is None
-        if model is None:
-            model = fallback_model
-        key = (model, project, is_estimated)
+    grouped: dict[tuple[str, str, bool, bool], CostRow] = {}
+    consumed_bubble_ids: set[str] = set()
+
+    def _add_row(
+        *,
+        model: str,
+        project: str,
+        is_estimated: bool,
+        source_is_bubble: bool,
+        inp: int,
+        out: int,
+    ) -> None:
+        key = (model, project, is_estimated, source_is_bubble)
         row = grouped.get(key)
         if row is None:
+            label = humanize_model(model)
+            if is_estimated:
+                label += " (est.)"
             row = CostRow(
                 source="cursor",
                 provider="anthropic" if model.startswith("claude-") else "openai",
                 model=model,
-                model_label=humanize_model(model) + (" (est.)" if is_estimated else ""),
+                model_label=label,
                 project=project,
                 is_estimated=is_estimated,
                 cheaper_alternative_model=_cheaper_in_family(model),
             )
             grouped[key] = row
         row.sessions += 1
-        row.input_tokens += session.user_tokens_est
-        row.output_tokens += session.assistant_tokens_est
+        row.input_tokens += inp
+        row.output_tokens += out
 
-    # Cost pass — Cursor's transcripts have no cache attribution, so we treat all input
+    for session in scan.sessions:
+        project = _project_label(session.workspace)
+        model = tracking.model_for(session.session_id)
+        is_estimated = model is None
+        if model is None:
+            model = fallback_model
+        bubble_obs = bubbles.tokens_for(session.session_id)
+        if bubble_obs is not None:
+            consumed_bubble_ids.add(session.session_id)
+            inp, out = bubble_obs.input_tokens, bubble_obs.output_tokens
+            source_is_bubble = True
+        else:
+            inp, out = session.user_tokens_est, session.assistant_tokens_est
+            source_is_bubble = False
+        _add_row(
+            model=model,
+            project=project,
+            is_estimated=is_estimated,
+            source_is_bubble=source_is_bubble,
+            inp=inp,
+            out=out,
+        )
+
+    # Bubble-only sessions: historical Cursor billed chats with no matching transcript.
+    # Worth surfacing because they have REAL token counts and used to cost real money.
+    for sid, obs in bubbles.observations.items():
+        if sid in consumed_bubble_ids:
+            continue
+        model = tracking.model_for(sid)
+        is_estimated = model is None
+        if model is None:
+            model = fallback_model
+        _add_row(
+            model=model,
+            project="(Cursor composer)",
+            is_estimated=is_estimated,
+            source_is_bubble=True,
+            inp=obs.input_tokens,
+            out=obs.output_tokens,
+        )
+
+    # Cost pass - Cursor's transcripts have no cache attribution, so we treat all input
     # as uncached (worst-case pricing). Use the Anthropic formula for Claude rows and
     # the OpenAI formula for GPT rows.
     for row in grouped.values():
@@ -356,21 +416,34 @@ def build_cost_breakdown(
     claude_scan: ClaudeCodeScanResult | None,
     codex_scan: CodexScanResult | None,
     cursor_tracking: CursorTrackingResult | None = None,
+    cursor_bubbles: CursorBubbleResult | None = None,
     fallback_model: str = "claude-opus-4-5",
 ) -> CostBreakdownReport:
     """Combine every source's scan into one segmentable report.
 
     ``cursor_tracking`` supplies model attribution for Cursor conversations we can
-    identify in the AI-tracking DB. Sessions not in the DB are priced against
-    ``fallback_model`` and marked ``is_estimated=True``.
+    identify in the AI-tracking DB. ``cursor_bubbles`` supplies real measured token
+    counts from state.vscdb for sessions that used Cursor's billed models. Sessions
+    missing either source fall back to estimation against ``fallback_model``.
     """
     rows: list[CostRow] = []
     cursor_estimated_sessions = 0
     cursor_priced_sessions = 0
-    if cursor_scan is not None:
+    cursor_token_measured_sessions = 0
+    cursor_token_estimated_sessions = 0
+    bubbles = cursor_bubbles or CursorBubbleResult()
+    if cursor_scan is not None or bubbles.observations:
+        scan = cursor_scan or CursorScanResult(sessions=[], total_files_seen=0)
+        # Sessions with measured tokens = bubble-side matches plus bubble-only orphans.
+        transcript_ids = {s.session_id for s in scan.sessions}
+        bubble_match_ids = transcript_ids & set(bubbles.observations.keys())
+        bubble_only_ids = set(bubbles.observations.keys()) - transcript_ids
+        cursor_token_measured_sessions = len(bubble_match_ids) + len(bubble_only_ids)
+        cursor_token_estimated_sessions = len(transcript_ids - bubble_match_ids)
         cursor_rows = _rows_from_cursor(
-            cursor_scan,
+            scan,
             cursor_tracking or CursorTrackingResult(),
+            bubbles,
             fallback_model=fallback_model,
         )
         for r in cursor_rows:
@@ -417,6 +490,8 @@ def build_cost_breakdown(
         grand_total_output_tokens=grand_out,
         cursor_sessions_unpriced=cursor_estimated_sessions,
         cursor_sessions_priced=cursor_priced_sessions,
+        cursor_sessions_token_measured=cursor_token_measured_sessions,
+        cursor_sessions_token_estimated=cursor_token_estimated_sessions,
         cache=cache,
         switch_recommendations=switch_recs,
     )

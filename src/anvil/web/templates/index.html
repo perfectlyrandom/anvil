@@ -14,14 +14,14 @@
       theme: {
         extend: {
           colors: {
-            base:    '#fbf8f3',  /* warm cream — like uncoated paper */
+            base:    '#fbf8f3',  /* warm cream - like uncoated paper */
             elev:    '#ffffff',  /* surfaces sit on the cream */
             card:    '#ffffff',
             line:    '#ebe4d9',  /* soft taupe border */
             ink:     '#1c1a16',  /* warm near-black */
             dim:     '#6b6660',  /* warm mid-gray */
             faint:   '#a8a097',  /* warm light gray */
-            coral:   '#c45e58',  /* dusty rose — the accent, NOT default Tailwind red */
+            coral:   '#c45e58',  /* dusty rose - the accent, NOT default Tailwind red */
             good:    '#5c8d6a',  /* muted sage for "shipped" */
             warn:    '#b8853a',  /* warm mustard */
           },
@@ -86,7 +86,7 @@
 </head>
 <body class="bg-base text-ink min-h-screen font-sans nums antialiased">
 
-  <!-- top status strip — visually quiet so the data leads -->
+  <!-- top status strip - visually quiet so the data leads -->
   <div class="border-b border-line bg-base">
     <div class="max-w-[1400px] mx-auto px-8 py-2.5 flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-faint">
       <div class="flex items-center gap-4">
@@ -194,7 +194,8 @@
         </div>
 
         <form hx-post="/chat" hx-target="#chat-log" hx-swap="beforeend"
-              hx-on::after-request="this.reset(); document.getElementById('chat-log').scrollTop=document.getElementById('chat-log').scrollHeight; document.getElementById('chat-empty').style.display='none'"
+              hx-on::before-request="addUserBubble(this)"
+              hx-on::after-request="document.getElementById('chat-log').scrollTop=document.getElementById('chat-log').scrollHeight"
               hx-indicator="#chat-thinking"
               class="border-t border-line p-3 flex flex-col gap-2">
           <div id="chat-thinking" class="htmx-indicator text-[11px] font-mono uppercase tracking-wider text-coral pl-2 flex items-center gap-1.5">
@@ -223,11 +224,43 @@
     function setActive(btn) {
       document.querySelectorAll('nav .tab').forEach(b => b.setAttribute('data-active', 'false'));
       btn.setAttribute('data-active', 'true');
+      // Instant visual feedback while the fragment loads (htmx will replace this on response).
+      document.getElementById('panel').innerHTML =
+        '<div class="text-sm font-mono text-faint flex items-center gap-2">' +
+        '<span class="size-1.5 rounded-full bg-coral animate-pulse"></span>' +
+        'loading ' + btn.textContent.trim().toLowerCase() + '…' +
+        '</div>';
     }
     function askExample(btn) {
       const input = document.getElementById('chat-input');
       input.value = btn.textContent.trim();
       input.focus();
+    }
+    // Optimistic render: drop the user's bubble into the log the moment they hit send,
+    // clear the input, and hide the empty-state. The server response only carries the
+    // assistant turn, which htmx appends after.
+    function addUserBubble(form) {
+      const input = form.querySelector('input[name="message"]');
+      const msg = input.value.trim();
+      if (!msg) return;
+      const log = document.getElementById('chat-log');
+      const empty = document.getElementById('chat-empty');
+      if (empty) empty.style.display = 'none';
+      const wrap = document.createElement('div');
+      wrap.className = 'space-y-3';
+      const label = document.createElement('div');
+      label.className = 'text-[10px] font-mono uppercase tracking-wider text-faint mb-1';
+      label.textContent = 'you';
+      const body = document.createElement('div');
+      body.className = 'text-ink text-sm font-sans';
+      body.textContent = msg;
+      const inner = document.createElement('div');
+      inner.appendChild(label);
+      inner.appendChild(body);
+      wrap.appendChild(inner);
+      log.appendChild(wrap);
+      log.scrollTop = log.scrollHeight;
+      input.value = '';
     }
   </script>
 </body>

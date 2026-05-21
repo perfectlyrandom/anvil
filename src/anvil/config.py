@@ -45,6 +45,19 @@ class Settings(BaseSettings):
         default_factory=lambda: Path.home() / ".cursor" / "ai-tracking" / "ai-code-tracking.db",
         description="Cursor's local AI-tracking SQLite. Recovers model attribution for Cursor sessions.",
     )
+    cursor_state_db: Path = Field(
+        default_factory=lambda: Path.home()
+        / "Library"
+        / "Application Support"
+        / "Cursor"
+        / "User"
+        / "globalStorage"
+        / "state.vscdb",
+        description=(
+            "Cursor's main global state SQLite. Holds per-bubble tokenCount, which gives real "
+            "measured input/output tokens for sessions that used Cursor's billed models (BYOK is zero)."
+        ),
+    )
     anthropic_api_key: str | None = Field(default=None, description="Anthropic API key for analysis features.")
     anthropic_model: str = Field(
         default="claude-sonnet-4-5-20250929",

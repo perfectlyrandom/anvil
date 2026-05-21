@@ -4,7 +4,7 @@ The deep analyzer surfaces *facts* (you repeated prompt X 8 times, bucket Y has 
 This module turns those into *advice* (save prompt X as a Cursor rule; switch bucket Y to scoped @
 attachments) with rough token & dollar savings so the user can decide what's worth their time.
 
-Estimates are intentionally conservative — we're trying to be a calibration tool, not a salesperson.
+Estimates are intentionally conservative - we're trying to be a calibration tool, not a salesperson.
 """
 
 from __future__ import annotations
@@ -69,9 +69,9 @@ def _tips_from_repeated_prompts(report: CursorDeepReport, pricing_model: str) ->
                 id=f"repeat-{i}",
                 severity=sev,
                 category="repetition",
-                title=f"You opened {n} sessions with the same prompt — {burned:,} tokens",
+                title=f"You opened {n} sessions with the same prompt - {burned:,} tokens",
                 detail=(
-                    f'"{cluster.canonical_first_query[:100]}…" — this exact opening shows up in '
+                    f'"{cluster.canonical_first_query[:100]}…" - this exact opening shows up in '
                     f"{n} different Cursor sessions. The model isn't getting smarter each time."
                 ),
                 action=(
@@ -184,13 +184,13 @@ def _tips_from_forked_sessions(report: CursorDeepReport, pricing_model: str) -> 
                 category="duplication",
                 title=(
                     f"{n} sessions in {cluster.workspace.split('/')[-1] or cluster.workspace} "
-                    f"share their first {cluster.identical_leading_turns} turns — looks duplicated"
+                    f"share their first {cluster.identical_leading_turns} turns - looks duplicated"
                 ),
                 detail=(
                     f"The first {cluster.identical_leading_turns} user+assistant turns are byte-identical "
                     f"across {n} different Cursor sessions starting with "
                     f'"{cluster.canonical_first_query[:80]}…". Each fork re-paid the model for the same '
-                    f"leading exchange — about {wasted:,} tokens of pure rework."
+                    f"leading exchange - about {wasted:,} tokens of pure rework."
                 ),
                 action=(
                     "If this was on purpose (parallel agents/worktrees) ignore it. Otherwise, "
@@ -288,7 +288,7 @@ def _tips_from_skills(report: SkillsAuditReport | None, pricing_model: str) -> l
     out: list[Tip] = []
     model_label = humanize_model(pricing_model)
 
-    # 1) Stale skills — exposed many times, no assistant-side path mention. Caveat: silent
+    # 1) Stale skills - exposed many times, no assistant-side path mention. Caveat: silent
     # following and Cursor's context summarization can both hide real usage, so this is the
     # "no visible evidence" set, not "definitely unused".
     stale = [s for s in report.skills if s.is_stale]
@@ -325,7 +325,7 @@ def _tips_from_skills(report: SkillsAuditReport | None, pricing_model: str) -> l
             )
         )
 
-    # 2) High per-session overhead — every prompt pays for the full list.
+    # 2) High per-session overhead - every prompt pays for the full list.
     overhead = report.per_session_description_overhead_tokens
     if overhead >= 5_000 and report.total_sessions_scanned >= 20:
         out.append(

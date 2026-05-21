@@ -195,6 +195,47 @@ def fetch_authored_prs(
     return prs
 
 
+def fetch_reviews_given_count(
+    login: str | None = None,
+    *,
+    since: datetime | None = None,
+    timeout_seconds: int = 30,
+) -> int:
+    """Count PRs the user has reviewed since ``since``.
+
+    Reviews are a real output that the ROI signal otherwise misses - reviewing
+    teammates' work is one of the things people spend AI time on. We just count
+    distinct PRs, not individual review comments.
+    """
+    _check_gh_available()
+    if login is None:
+        login = _check_gh_authed()
+
+    parts = [f"reviewed-by:{login}", "type:pr", f"-author:{login}"]
+    if since is not None:
+        parts.append(f"updated:>={since.date().isoformat()}")
+    search_query = " ".join(parts)
+
+    try:
+        result = subprocess.run(
+            ["gh", "search", "prs", search_query, "--limit", "200", "--json", "url"],
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            check=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise GitHubConnectorError(f"gh search failed: {exc.stderr}") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise GitHubConnectorError(f"gh search timed out after {timeout_seconds}s") from exc
+
+    try:
+        prs = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise GitHubConnectorError(f"gh search returned invalid JSON: {exc}") from exc
+    return len(prs)
+
+
 def default_since(days: int = 90) -> datetime:
     """Sensible default lookback for anvil analyses."""
     return datetime.now(tz=UTC) - timedelta(days=days)

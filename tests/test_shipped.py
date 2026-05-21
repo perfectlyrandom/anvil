@@ -1,4 +1,4 @@
-"""Tests for anvil.analysis.shipped — meaningful-PRs classification."""
+"""Tests for anvil.analysis.shipped - meaningful-PRs classification."""
 
 from __future__ import annotations
 
@@ -246,7 +246,7 @@ class TestBuildShippedReport:
         assert report.by_repo[1].meaningful == 1
 
     def test_top_meaningful_sorted_by_significance_not_size(self) -> None:
-        # Given: a small perf PR, a small bare feat, and a huge bare feat — significance > LoC.
+        # Given: a small perf PR, a small bare feat, and a huge bare feat - significance > LoC.
         prs = [
             _pr(title="feat: small", additions=10, deletions=5, number=1),
             _pr(

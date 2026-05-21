@@ -24,6 +24,7 @@ from anvil.connectors.github import (
 )
 from anvil.parsers.claude_code import scan_claude_code_projects
 from anvil.parsers.codex import CodexScanResult, scan_codex_sessions
+from anvil.parsers.cursor_bubbles import CursorBubbleResult, scan_cursor_bubbles
 from anvil.parsers.cursor_tracking import CursorTrackingResult, scan_cursor_tracking
 from anvil.parsers.cursor_transcripts import (
     CursorScanResult,
@@ -45,11 +46,13 @@ class ToolContext:
     claude_projects_dir: Path
     codex_sessions_dir: Path | None = None
     cursor_tracking_db: Path | None = None
+    cursor_state_db: Path | None = None
     default_pricing_model: str = "claude-opus-4-5"
     github_login: str | None = None
     _cursor_scan: CursorScanResult | None = None
     _codex_scan: CodexScanResult | None = None
     _cursor_tracking: CursorTrackingResult | None = None
+    _cursor_bubbles: CursorBubbleResult | None = None
 
     def cursor_scan(self) -> CursorScanResult:
         if self._cursor_scan is None:
@@ -72,10 +75,19 @@ class ToolContext:
                 self._cursor_tracking = scan_cursor_tracking(self.cursor_tracking_db)
         return self._cursor_tracking
 
+    def cursor_bubbles(self) -> CursorBubbleResult:
+        if self._cursor_bubbles is None:
+            if self.cursor_state_db is None:
+                self._cursor_bubbles = CursorBubbleResult()
+            else:
+                self._cursor_bubbles = scan_cursor_bubbles(self.cursor_state_db)
+        return self._cursor_bubbles
+
     def invalidate(self) -> None:
         self._cursor_scan = None
         self._codex_scan = None
         self._cursor_tracking = None
+        self._cursor_bubbles = None
 
 
 def tool_summarize_cursor(ctx: ToolContext) -> dict[str, Any]:
@@ -266,11 +278,13 @@ def tool_cost_breakdown(ctx: ToolContext) -> dict[str, Any]:
     claude = scan_claude_code_projects(ctx.claude_projects_dir)
     codex = ctx.codex_scan()
     tracking = ctx.cursor_tracking()
+    bubbles = ctx.cursor_bubbles()
     b = build_cost_breakdown(
         cursor,
         claude,
         codex,
         cursor_tracking=tracking,
+        cursor_bubbles=bubbles,
         fallback_model=ctx.default_pricing_model,
     )
     return {

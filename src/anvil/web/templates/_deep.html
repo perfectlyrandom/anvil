@@ -85,7 +85,7 @@
           <div class="text-right text-faint">{{ s.turn_index }}</div>
           <div class="text-right text-ink">{{ s.estimated_tokens | intfmt }}</div>
           <div class="text-right {% if s.duplicate_count > 1 %}text-coral font-semibold{% else %}text-faint{% endif %}">
-            {% if s.duplicate_count > 1 %}{{ s.duplicate_count }}×{% else %}—{% endif %}
+            {% if s.duplicate_count > 1 %}{{ s.duplicate_count }}×{% else %}-{% endif %}
           </div>
           <div class="text-dim truncate">{{ s.text_preview | trunc(80) }}</div>
         </div>

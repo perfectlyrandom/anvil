@@ -58,7 +58,7 @@ class RepeatedPromptCluster:
 
 @dataclass
 class ForkedSessionCluster:
-    """Two or more sessions whose first K turns are byte-identical — almost certainly forks.
+    """Two or more sessions whose first K turns are byte-identical - almost certainly forks.
 
     A repeated opening prompt is "I keep asking the same thing"; a forked session is
     "I duplicated a session and re-paid for the leading turns the model already gave me."

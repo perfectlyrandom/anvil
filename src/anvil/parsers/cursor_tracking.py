@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 # tiers). We canonicalize to the closest billable model whose pricing we know. When in
 # doubt, prefer the *more expensive* canonical so we don't under-report spend.
 _MODEL_NORMALIZE: list[tuple[str, str]] = [
-    # Anthropic Opus family — every Cursor opus variant priced at current Opus rate
+    # Anthropic Opus family - every Cursor opus variant priced at current Opus rate
     ("claude-opus-4-7", "claude-opus-4-5"),
     ("claude-opus-4-6", "claude-opus-4-5"),
     ("claude-opus-4-5", "claude-opus-4-5"),
@@ -66,7 +66,7 @@ def normalize_cursor_model(raw: str | None) -> str | None:
     for prefix, canonical in _MODEL_NORMALIZE:
         if lowered.startswith(prefix):
             return canonical
-    return None  # unknown — let caller fall back to default
+    return None  # unknown - let caller fall back to default
 
 
 @dataclass
@@ -106,7 +106,7 @@ def scan_cursor_tracking(db_path: Path) -> CursorTrackingResult:
         return CursorTrackingResult()
     result = CursorTrackingResult()
     try:
-        # Read-only sqlite open — Cursor itself may have the DB open for writes.
+        # Read-only sqlite open - Cursor itself may have the DB open for writes.
         uri = f"file:{db_path}?mode=ro"
         con = sqlite3.connect(uri, uri=True, timeout=1.0)
         cur = con.cursor()

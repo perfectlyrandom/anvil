@@ -9,7 +9,7 @@
   </div>
 {% else %}
 
-  {# --- window selector — re-fetches the fragment with a new `days` value --- #}
+  {# --- window selector - re-fetches the fragment with a new `days` value --- #}
   <div class="flex items-center gap-2 mb-6 text-[11px] font-mono uppercase tracking-wider">
     <span class="text-faint">window</span>
     {% for d in [7, 30, 90, 365] %}
@@ -37,7 +37,7 @@
         <p class="text-dim text-sm mt-3">Solid fixes / features / refactors with at least some signal.</p>
       </div>
     </div>
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8 text-sm">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8 text-sm">
       <div class="text-dim">
         <span class="font-mono text-faint">total prs</span>
         <span class="text-ink font-medium ml-2 nums">{{ report.total_prs | intfmt }}</span>
@@ -50,7 +50,15 @@
         <span class="font-mono text-faint">noise filtered</span>
         <span class="text-ink font-medium ml-2 nums">{{ report.by_tier.get('noise', 0) | intfmt }}</span>
       </div>
+      <div class="text-dim" title="PRs you reviewed (authored by someone else) in this window. Not counted in significance buckets but is real output.">
+        <span class="font-mono text-faint">reviews given</span>
+        <span class="text-ink font-medium ml-2 nums">{% if report.reviews_given is none %}-{% else %}{{ report.reviews_given | intfmt }}{% endif %}</span>
+      </div>
     </div>
+    <p class="text-dim text-xs mt-3 max-w-3xl leading-relaxed">
+      Not measured anywhere on this page: PRDs, RFCs, architecture docs, tickets, Slack threads, debugging investigations.
+      If a lot of your AI time lands in those forms, the "shipped" view is going to look thin even when your real output isn't.
+    </p>
     <p class="text-dim text-sm mt-6 max-w-3xl leading-relaxed">
       Significance score (0-100) blends conventional-commits type, body keywords (customer, performance,
       architecture, regression, tech debt), size (log-scaled), files touched, and review count.
@@ -59,7 +67,7 @@
     </p>
   </div>
 
-  {# --- category strip — what kind of work shipped --- #}
+  {# --- category strip - what kind of work shipped --- #}
   <section class="mb-12">
     <div class="flex items-baseline justify-between mb-4">
       <h3 class="font-display text-2xl italic tracking-tight">What you shipped</h3>

@@ -32,15 +32,20 @@
         {% endfor %}
       </div>
     </div>
-    {% if breakdown.cursor_sessions_unpriced %}
+    {% if breakdown.cursor_sessions_unpriced or breakdown.cursor_sessions_token_estimated %}
     <p class="text-dim text-xs mt-3 max-w-3xl leading-relaxed">
-      <span class="text-good font-mono">{{ breakdown.cursor_sessions_priced }}</span> Cursor sessions priced against the real model from <span class="font-mono">ai-code-tracking.db</span>;
-      <span class="text-warn font-mono">{{ breakdown.cursor_sessions_unpriced }}</span> sessions estimated at the fallback model. Cursor doesn't log tokens or cost — Claude Code &amp; Codex do.
+      <strong>Model attribution:</strong>
+      <span class="text-good font-mono">{{ breakdown.cursor_sessions_priced }}</span> sessions from <span class="font-mono">ai-code-tracking.db</span>;
+      <span class="text-warn font-mono">{{ breakdown.cursor_sessions_unpriced }}</span> at fallback model.
+      <br />
+      <strong>Token counts:</strong>
+      <span class="text-good font-mono">{{ breakdown.cursor_sessions_token_measured }}</span> measured from <span class="font-mono">state.vscdb</span> bubble records;
+      <span class="text-warn font-mono">{{ breakdown.cursor_sessions_token_estimated }}</span> estimated from transcript text (BYOK sessions - Cursor doesn't log them; see <a href="https://cursor.com/help/models-and-usage/api-keys" target="_blank" class="underline">docs</a>).
     </p>
     {% endif %}
   </div>
 
-  {# Cache util + switch recs side by side — denser, fewer sections #}
+  {# Cache util + switch recs side by side - denser, fewer sections #}
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
     {% if breakdown.cache.cacheable_input_tokens > 0 %}
     <section class="bg-elev border border-line p-5 rounded-sm">
@@ -85,7 +90,7 @@
         </div>
         <div class="text-right font-mono">
           <span class="text-good">{{ r.potential_model_savings_usd | usd }}</span>
-          <span class="text-faint text-xs ml-1">({{ (r.potential_model_savings_usd / r.estimated_usd) | pct if r.estimated_usd else '—' }})</span>
+          <span class="text-faint text-xs ml-1">({{ (r.potential_model_savings_usd / r.estimated_usd) | pct if r.estimated_usd else '-' }})</span>
         </div>
       </div>
       {% endfor %}
@@ -93,7 +98,7 @@
     {% endif %}
   </div>
 
-  {# Segmented table — every (source x model x project) row #}
+  {# Segmented table - every (source x model x project) row #}
   <section>
     <div class="flex items-baseline justify-between mb-3">
       <h3 class="font-display text-xl italic tracking-tight">Every row</h3>
@@ -116,8 +121,8 @@
         <div class="text-dim truncate" title="{{ r.project }}">{{ r.project }}</div>
         <div class="text-right text-faint">{{ r.sessions }}</div>
         <div class="text-right text-dim">{{ r.input_tokens | intfmt }}</div>
-        <div class="text-right {% if r.cache_hit_rate > 0.5 %}text-good{% elif r.cache_hit_rate > 0 %}text-warn{% else %}text-faint{% endif %}">{{ r.cache_hit_rate | pct if r.cache_hit_rate else '—' }}</div>
-        <div class="text-right {% if r.estimated_usd > 0 %}text-coral{% else %}text-faint italic{% endif %}">{{ r.estimated_usd | usd if r.estimated_usd else '—' }}</div>
+        <div class="text-right {% if r.cache_hit_rate > 0.5 %}text-good{% elif r.cache_hit_rate > 0 %}text-warn{% else %}text-faint{% endif %}">{{ r.cache_hit_rate | pct if r.cache_hit_rate else '-' }}</div>
+        <div class="text-right {% if r.estimated_usd > 0 %}text-coral{% else %}text-faint italic{% endif %}">{{ r.estimated_usd | usd if r.estimated_usd else '-' }}</div>
       </div>
       {% endfor %}
     </div>

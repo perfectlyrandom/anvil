@@ -26,9 +26,16 @@ from pathlib import Path
 from typing import Generic, TypeVar
 
 from anvil.analysis.skills import SkillRecord, SkillSource, scan_files_for_skill_mentions, scan_skills
-from anvil.connectors.github import PullRequestRecord, default_since, fetch_authored_prs
+from anvil.connectors.github import (
+    GitHubConnectorError,
+    PullRequestRecord,
+    default_since,
+    fetch_authored_prs,
+    fetch_reviews_given_count,
+)
 from anvil.parsers.claude_code import ClaudeCodeScanResult, scan_claude_code_projects
 from anvil.parsers.codex import CodexScanResult, scan_codex_sessions
+from anvil.parsers.cursor_bubbles import CursorBubbleResult, scan_cursor_bubbles
 from anvil.parsers.cursor_tracking import CursorTrackingResult, scan_cursor_tracking
 from anvil.parsers.cursor_transcripts import CursorScanResult, scan_cursor_projects
 
@@ -73,10 +80,12 @@ class ScanCache:
         self._claude: _CacheEntry[ClaudeCodeScanResult] | None = None
         self._codex: _CacheEntry[CodexScanResult] | None = None
         self._cursor_tracking: tuple[float, float, CursorTrackingResult] | None = None  # (mtime, probed_at, value)
+        self._cursor_bubbles: tuple[float, float, CursorBubbleResult] | None = None  # (mtime, probed_at, value)
         self._skills: _CacheEntry[list[SkillRecord]] | None = None
         # Skill-name consultation counts from non-Cursor sources, keyed by source label.
         self._skill_mentions: dict[str, _CacheEntry[dict[str, int]]] = {}
         self._prs: dict[tuple[str, int], tuple[float, list[PullRequestRecord]]] = {}
+        self._reviews_given: dict[tuple[str, int], tuple[float, int | None]] = {}
         self._lock = threading.Lock()
 
     def _get(
@@ -193,6 +202,23 @@ class ScanCache:
             self._cursor_tracking = (mtime, now, value)
             return value
 
+    def cursor_bubbles(self, db_path: Path) -> CursorBubbleResult:
+        """Cache the Cursor state.vscdb bubble token scan with a simple mtime key.
+
+        This DB is big (600K+ rows) so we don't want to re-read it on every fragment
+        request. mtime-keyed cache + a probe-TTL handles both 'file untouched' and
+        'we just looked, give it a sec' cases.
+        """
+        with self._lock:
+            now = time.monotonic()
+            mtime = db_path.stat().st_mtime if db_path.exists() else 0.0
+            cached = self._cursor_bubbles
+            if cached is not None and cached[0] == mtime and now - cached[1] < _PROBE_TTL_SECONDS:
+                return cached[2]
+            value = scan_cursor_bubbles(db_path)
+            self._cursor_bubbles = (mtime, now, value)
+            return value
+
     def prs(self, login: str, days: int) -> list[PullRequestRecord]:
         """Cached PR fetch keyed on (login, days). Flat 5-minute TTL."""
         key = (login, days)
@@ -210,6 +236,23 @@ class ScanCache:
             self._prs[key] = (time.monotonic(), prs)
         return prs
 
+    def reviews_given_count(self, login: str, days: int) -> int | None:
+        """Cached count of PRs the user reviewed in the window. None on fetch error."""
+        key = (login, days)
+        now = time.monotonic()
+        with self._lock:
+            entry = self._reviews_given.get(key)
+            if entry is not None and now - entry[0] < _GITHUB_TTL_SECONDS:
+                return entry[1]
+        try:
+            count: int | None = fetch_reviews_given_count(login, since=default_since(days))
+        except GitHubConnectorError as exc:
+            logger.warning("reviews-given fetch failed (login=%s): %s", login, exc)
+            count = None
+        with self._lock:
+            self._reviews_given[key] = (time.monotonic(), count)
+        return count
+
     def invalidate(self) -> None:
         """Force a re-scan on the next access. For debugging / manual refresh."""
         with self._lock:
@@ -217,6 +260,7 @@ class ScanCache:
             self._claude = None
             self._codex = None
             self._cursor_tracking = None
+            self._cursor_bubbles = None
             self._skills = None
             self._skill_mentions.clear()
             self._prs.clear()
